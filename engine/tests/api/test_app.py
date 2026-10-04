@@ -16,9 +16,10 @@ def _client(tmp_path: Path) -> TestClient:
     store = CandleStore.open(db)
     store.upsert(
         [
-            Candle("KRW-BTC", D, *(Decimal(v) for v in ("1", "3", "0.5", "115216000.1", "2", "9"))),
-            Candle("KRW-ETH", D, *(Decimal("1") for _ in range(6))),
-        ]
+            Candle("KRW-BTC", D, *(Decimal(v) for v in ("1", "3", "1", "115216000", "0.5"))),
+            Candle("KRW-ETH", D, *(Decimal("1") for _ in range(5))),
+        ],
+        fetched_at=D,
     )
     store.close()
     return TestClient(create_app(lambda: CandleStore.open(db)))
@@ -34,4 +35,5 @@ def test_종목별_일봉을_돌려줌(tmp_path: Path) -> None:
 def test_가격은_문자열로_내보내_정밀도_유지(tmp_path: Path) -> None:
     body = _client(tmp_path).get("/candles").json()
 
-    assert body[0]["close"] == "115216000.1"
+    assert body[0]["close"] == "115216000"
+    assert body[0]["volume"] == "0.50000000"

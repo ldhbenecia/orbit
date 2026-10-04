@@ -20,6 +20,7 @@ engine/
 │   ├─ ledger/       가상 장부
 │   ├─ risk/         리스크 가드 · 하드 리밋 · 킬 스위치
 │   ├─ marketdata/   시세(캔들) 수집 · 저장
+│   ├─ db/           SQLite 마이그레이션
 │   ├─ api/          FastAPI (대시보드용, 조회 위주)
 │   ├─ notify/       텔레그램
 │   └─ scheduler.py
@@ -30,6 +31,15 @@ engine/
 - 브로커는 `typing.Protocol` 로 정의, 실거래 어댑터와 `MockBroker` 가 같은 프로토콜을 구현
 - 경계 데이터(API 응답, 설정, 대시보드 응답)는 pydantic 모델. 금액 필드는 `Decimal`
 - 설정은 pydantic-settings 로 로드, 누락·검증 실패 시 dry-run 으로 떨어진다
+
+## DB (SQLite)
+
+- 테이블은 `STRICT` — 선언과 다른 타입이 들어오면 거부. 복합 자연키 시계열은 `WITHOUT ROWID`
+- **금액·수량은 최소 단위 정수** (`orbit.units.to_units`). 원화는 원, 코인 수량은 10^8. 자릿수를 넘는 값은 반올림하지 않고 거부. TEXT·REAL 로 숫자 저장 금지
+- 시각은 epoch 초 정수 (UTC)
+- 스키마 변경은 `orbit/db/migrations.py` 의 `MIGRATIONS` 뒤에 추가만. 적용된 항목 수정·삭제 금지. 버전은 `PRAGMA user_version`
+- 테이블을 지우고 새로 만드는 마이그레이션은 다시 받을 수 있는 캐시(시세)에만. 장부·주문 테이블은 데이터 보존 마이그레이션만
+- 조회는 컬럼명을 명시 (`SELECT *` 금지)
 
 ## 스타일
 

@@ -1,30 +1,28 @@
 import sqlite3
-from datetime import datetime
-from decimal import Decimal
+from datetime import UTC, datetime
 from pathlib import Path
 
+from orbit.db.migrations import migrate
 from orbit.marketdata.candle import Candle
+from orbit.units import from_units, to_units
 
-# 가격을 REAL 로 두면 float 오차가 생김 — Decimal 문자열(TEXT)로 저장
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS daily_candles (
-    market TEXT NOT NULL,
-    start_utc TEXT NOT NULL,
-    open TEXT NOT NULL,
-    high TEXT NOT NULL,
-    low TEXT NOT NULL,
-    close TEXT NOT NULL,
-    volume TEXT NOT NULL,
-    value TEXT NOT NULL,
-    PRIMARY KEY (market, start_utc)
-)
-"""
+QUOTE_SCALES = {"KRW": 0}  # 호가 통화별 소수 자릿수 — 원화 마켓 호가는 1원 이상 단위
+VOLUME_SCALE = 8  # 코인 수량 최소 단위 (사토시)
+
+_COLUMNS = "market, start_ts, open, high, low, close, volume, fetched_ts"
+
+
+def price_scale(market: str) -> int:
+    quote = market.split("-", 1)[0]
+    if quote not in QUOTE_SCALES:
+        raise ValueError(f"지원하지 않는 호가 통화: {market}")
+    return QUOTE_SCALES[quote]
 
 
 class CandleStore:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
-        self._conn.execute(_SCHEMA)
+        migrate(conn)
 
     @classmethod
     def open(cls, path: Path) -> "CandleStore":
@@ -34,50 +32,57 @@ class CandleStore:
     def close(self) -> None:
         self._conn.close()
 
-    def upsert(self, candles: list[Candle]) -> None:
+    def upsert(self, candles: list[Candle], fetched_at: datetime) -> None:
+        fetched_ts = int(fetched_at.timestamp())
+        rows = []
+        for c in candles:
+            scale = price_scale(c.market)
+            rows.append(
+                (
+                    c.market,
+                    int(c.start.timestamp()),
+                    to_units(c.open, scale),
+                    to_units(c.high, scale),
+                    to_units(c.low, scale),
+                    to_units(c.close, scale),
+                    to_units(c.volume, VOLUME_SCALE),
+                    fetched_ts,
+                )
+            )
         with self._conn:
             self._conn.executemany(
-                """
-                INSERT INTO daily_candles VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (market, start_utc) DO UPDATE SET
+                f"""
+                INSERT INTO daily_candles ({_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (market, start_ts) DO UPDATE SET
                     open = excluded.open, high = excluded.high, low = excluded.low,
-                    close = excluded.close, volume = excluded.volume, value = excluded.value
+                    close = excluded.close, volume = excluded.volume,
+                    fetched_ts = excluded.fetched_ts
                 """,
-                [
-                    (
-                        c.market,
-                        c.start.isoformat(),
-                        str(c.open),
-                        str(c.high),
-                        str(c.low),
-                        str(c.close),
-                        str(c.volume),
-                        str(c.value),
-                    )
-                    for c in candles
-                ],
+                rows,
             )
 
     def load(self, market: str) -> list[Candle]:
+        scale = price_scale(market)
         rows = self._conn.execute(
-            "SELECT * FROM daily_candles WHERE market = ? ORDER BY start_utc", (market,)
+            "SELECT start_ts, open, high, low, close, volume"
+            " FROM daily_candles WHERE market = ? ORDER BY start_ts",
+            (market,),
         ).fetchall()
         return [
             Candle(
-                market=row[0],
-                start=datetime.fromisoformat(row[1]),
-                open=Decimal(row[2]),
-                high=Decimal(row[3]),
-                low=Decimal(row[4]),
-                close=Decimal(row[5]),
-                volume=Decimal(row[6]),
-                value=Decimal(row[7]),
+                market=market,
+                start=datetime.fromtimestamp(start_ts, UTC),
+                open=from_units(open_, scale),
+                high=from_units(high, scale),
+                low=from_units(low, scale),
+                close=from_units(close, scale),
+                volume=from_units(volume, VOLUME_SCALE),
             )
-            for row in rows
+            for start_ts, open_, high, low, close, volume in rows
         ]
 
     def latest_start(self, market: str) -> datetime | None:
-        row = self._conn.execute(
-            "SELECT MAX(start_utc) FROM daily_candles WHERE market = ?", (market,)
+        (ts,) = self._conn.execute(
+            "SELECT MAX(start_ts) FROM daily_candles WHERE market = ?", (market,)
         ).fetchone()
-        return datetime.fromisoformat(row[0]) if row and row[0] else None
+        return datetime.fromtimestamp(ts, UTC) if ts is not None else None

@@ -42,8 +42,6 @@ export interface components {
             close: string;
             /** Volume */
             volume: string;
-            /** Value */
-            value: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {

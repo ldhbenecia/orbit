@@ -14,7 +14,6 @@ class Candle:
     low: Decimal
     close: Decimal
     volume: Decimal  # 거래량 (코인 수량)
-    value: Decimal  # 거래대금 (원화)
 
     def is_closed(self, now: datetime) -> bool:
         # 진행 중인 봉은 종가가 계속 바뀜 — 저장·판단에 쓰면 미래 데이터 참조와 같음
