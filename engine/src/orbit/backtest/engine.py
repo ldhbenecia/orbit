@@ -1,7 +1,8 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import ROUND_DOWN, Decimal
+from typing import Literal
 
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.upbit_rules import FEE_RATE_KRW, MIN_ORDER_KRW, round_to_tick
@@ -16,12 +17,24 @@ class Funding:
     monthly: Decimal  # 매달 첫 거래일마다 (첫 거래일 포함)
 
 
+def _rate_fee(rate: Decimal) -> Callable[[Decimal, Literal["buy", "sell"]], Decimal]:
+    return lambda amount, side: amount * rate
+
+
 @dataclass(frozen=True, slots=True)
 class BacktestConfig:
+    # 기본값은 업비트 원화 마켓 코인
     fee_rate: Decimal = FEE_RATE_KRW
     # 거래소 공식 값이 아닌 가정 — KRW-BTC 실측 스프레드 약 0.03% 의 여유를 둔 보수값
     slippage_rate: Decimal = Decimal("0.0005")
     min_order: Decimal = MIN_ORDER_KRW
+    qty_step: Decimal = QTY_STEP  # 수량 최소 단위 — 주식은 1주
+    round_price: Callable[[Decimal, bool], Decimal] = round_to_tick  # 호가 단위 (매수 올림)
+    # 체결 금액 → 수수료. 없으면 금액 × fee_rate. 주식은 절사·매도 세금이 있어 따로 줌
+    fee: Callable[[Decimal, Literal["buy", "sell"]], Decimal] | None = None
+
+    def fee_for(self, amount: Decimal, side: Literal["buy", "sell"]) -> Decimal:
+        return (self.fee or _rate_fee(self.fee_rate))(amount, side)
 
 
 DEFAULT_CONFIG = BacktestConfig()
@@ -138,32 +151,34 @@ def _rebalance(
         return None
 
     if diff > 0:
-        exec_price = round_to_tick(price * (1 + config.slippage_rate), up=True)
+        exec_price = config.round_price(price * (1 + config.slippage_rate), True)
         # 수수료까지 현금 안에서 내도록 수량을 내림 — 예산을 넘는 쪽으로 반올림하지 않음
         budget = min(diff, cash)
-        buy_qty = (budget / (exec_price * (1 + config.fee_rate))).quantize(QTY_STEP, ROUND_DOWN)
-        if buy_qty * exec_price < config.min_order:
+        buy_qty = (budget / (exec_price * (1 + config.fee_rate))).quantize(
+            config.qty_step, ROUND_DOWN
+        )
+        if buy_qty <= 0 or buy_qty * exec_price < config.min_order:
             return None
         return Trade(
             day=day,
             side="buy",
             qty=buy_qty,
             price=exec_price,
-            fee=buy_qty * exec_price * config.fee_rate,
+            fee=config.fee_for(buy_qty * exec_price, "buy"),
             slippage_cost=buy_qty * (exec_price - price),
             reason=reason,
         )
 
-    exec_price = round_to_tick(price * (1 - config.slippage_rate), up=False)
-    sell_qty = min(qty, -diff / price).quantize(QTY_STEP, ROUND_DOWN)
-    if sell_qty * exec_price < config.min_order:
+    exec_price = config.round_price(price * (1 - config.slippage_rate), False)
+    sell_qty = min(qty, -diff / price).quantize(config.qty_step, ROUND_DOWN)
+    if sell_qty <= 0 or sell_qty * exec_price < config.min_order:
         return None
     return Trade(
         day=day,
         side="sell",
         qty=sell_qty,
         price=exec_price,
-        fee=sell_qty * exec_price * config.fee_rate,
+        fee=config.fee_for(sell_qty * exec_price, "sell"),
         slippage_cost=sell_qty * (price - exec_price),
         reason=reason,
     )

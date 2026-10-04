@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { DcaCard } from "@/components/dca-card";
 import { NextOpenCard } from "@/components/next-open-card";
 import { PriceView } from "@/components/price-view";
+import { RuleCheckCard } from "@/components/rule-check-card";
 import { SignalCard } from "@/components/signal-card";
 import type { components } from "@/lib/api";
 import { type CandleOut, toChartCandle } from "@/lib/candles";
@@ -16,7 +17,7 @@ export default async function Page(props: PageProps<"/">) {
   await connection();
   const info = findMarket((await props.searchParams).market);
   const market = info.market;
-  const [candles, summary, runs, verdict, nextOpen] = await Promise.all([
+  const [candles, summary, runs, verdict, nextOpen, checks] = await Promise.all([
     engineJson<CandleOut[]>(`/candles?market=${market}&interval=day&limit=${RECENT_DAILY}`),
     engineJson<components["schemas"]["CandlesSummaryOut"] | null>(`/candles/summary?market=${market}`),
     engineJson<components["schemas"]["RunOut"][]>(`/backtests?market=${market}`),
@@ -25,6 +26,7 @@ export default async function Page(props: PageProps<"/">) {
     market.startsWith("KRX-")
       ? engineJson<components["schemas"]["NextOpenOut"] | null>(`/next-open?market=${market}`)
       : null,
+    info.core ? null : engineJson<components["schemas"]["RuleChecksOut"] | null>(`/rule-checks?market=${market}`),
   ]);
 
   if (candles === null) return <Notice title="엔진 API 에 연결할 수 없어요" command="uv run --project engine orbit serve" />;
@@ -39,7 +41,7 @@ export default async function Page(props: PageProps<"/">) {
         {verdict?.kind === "dca" && <DcaCard info={info} data={verdict.data} />}
         {verdict?.kind === "signals" && <SignalCard info={info} data={verdict.data} />}
       </div>
-      <div className="min-w-0 lg:order-1">
+      <div className="min-w-0 space-y-10 lg:order-1">
         <PriceView
           key={market}
           info={info}
@@ -48,6 +50,7 @@ export default async function Page(props: PageProps<"/">) {
           dailyCount={summary?.count ?? candles.length}
           firstDay={(summary?.first ?? candles[0].start).slice(0, 10)}
         />
+        {checks && <RuleCheckCard info={info} data={checks} />}
       </div>
     </div>
   );

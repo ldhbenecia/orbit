@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rule-checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rule Checks */
+        get: operations["rule_checks_rule_checks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/backtests": {
         parameters: {
             query?: never;
@@ -276,6 +293,46 @@ export interface components {
             average: string;
             /** Gap */
             gap: string;
+        };
+        /** RuleCheckOut */
+        RuleCheckOut: {
+            /** Strategy */
+            strategy: string;
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "all" | "first" | "second";
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Cagr */
+            cagr: string;
+            /** Mdd */
+            mdd: string;
+            /** Trades */
+            trades: number;
+            /** Fee Ratio */
+            fee_ratio: string;
+        };
+        /** RuleChecksOut */
+        RuleChecksOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Code Version */
+            code_version: string;
+            /** Rows */
+            rows: components["schemas"]["RuleCheckOut"][];
         };
         /** RunOut */
         RunOut: {
@@ -527,6 +584,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NextOpenOut"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rule_checks_rule_checks_get: {
+        parameters: {
+            query: {
+                market: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleChecksOut"] | null;
                 };
             };
             /** @description Validation Error */

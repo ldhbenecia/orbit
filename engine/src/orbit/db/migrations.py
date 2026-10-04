@@ -56,6 +56,23 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (run_id, seq)
     ) STRICT, WITHOUT ROWID;
     """,
+    # 3: 규칙 검증 — 기간을 나눠 본 성과와 파라미터 민감도. 통화가 다른 종목도 같이 담도록 비율만
+    """
+    CREATE TABLE rule_checks (
+        market TEXT NOT NULL,
+        created_ts INTEGER NOT NULL,    -- 한 번 검증한 묶음, epoch 초 (UTC)
+        strategy TEXT NOT NULL,
+        period TEXT NOT NULL CHECK (period IN ('all', 'first', 'second')),
+        code_version TEXT NOT NULL,     -- 실행한 코드의 git 커밋
+        start_ts INTEGER NOT NULL,      -- 평가 첫 봉, epoch 초 (UTC)
+        end_ts INTEGER NOT NULL,
+        cagr_ppm INTEGER NOT NULL,      -- 기준가 기준 연평균 복리 수익률
+        mdd_ppm INTEGER NOT NULL,       -- 기준가 기준 최대 낙폭 (음수)
+        trades INTEGER NOT NULL,
+        fee_ppm INTEGER NOT NULL,       -- 기간 수수료·슬리피지 ÷ 기간 시작 평가액
+        PRIMARY KEY (market, created_ts, strategy, period)
+    ) STRICT, WITHOUT ROWID;
+    """,
 ]
 
 
