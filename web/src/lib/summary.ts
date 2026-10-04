@@ -22,9 +22,9 @@ export const position = (gap: number) => {
 
 export const tone = (value: number) => (value > 0 ? "text-up" : value < 0 ? "text-down" : "text-muted");
 
-export type Line = { text: string; tone: string };
+export type Line = { text: string; tone: string; sub?: { text: string; tone: string } };
 
-// 전 종목 목록의 한 줄 — 모두 매수 쪽·모두 아님일 때만 색, 섞이면 중립
+// 종목 타일의 한 줄 — 모두 매수 쪽·모두 아님일 때만 색, 섞이면 중립
 export const signalLine = (data: Signals): Line => {
   const buySide = buySideCount(data);
   const total = data.signals.length;
@@ -36,12 +36,16 @@ export const signalLine = (data: Signals): Line => {
 
 // 코어 ETF 는 사라·말라가 아니라 다음 적립일과 지금 가격 위치
 export const dcaLine = (data: Dca): Line => {
-  const when = data.days_until === 0 ? "오늘 적립" : `적립 D-${data.days_until}`;
+  const when = data.days_until === 0 ? "오늘 적립일" : `적립일 D-${data.days_until}`;
   const first = data.positions[0];
-  if (!first) return { text: when, tone: "text-muted" };
+  if (!first) return { text: when, tone: "text-foreground" };
   const gap = Number(first.gap);
   return {
-    text: `${when} · ${Math.round(first.window / 21)}개월 ${position(gap)}`,
-    tone: Math.abs(gap) < NEAR ? "text-muted" : tone(gap),
+    text: when,
+    tone: "text-foreground",
+    sub: {
+      text: `${Math.round(first.window / 21)}개월 ${position(gap)}`,
+      tone: Math.abs(gap) < NEAR ? "text-muted" : tone(gap),
+    },
   };
 };
