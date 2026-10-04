@@ -7,7 +7,7 @@ import { SegmentedControl } from "@/components/segmented-control";
 import type { components } from "@/lib/api";
 import { type CandleOut, type ChartCandle, type Interval, toChartCandle } from "@/lib/candles";
 import { formatDate, formatPercent, formatPrice, formatSignedPrice } from "@/lib/format";
-import type { MarketInfo } from "@/lib/markets";
+import { DEMO, type MarketInfo } from "@/lib/markets";
 import { ruleName } from "@/lib/rules";
 import { annualVolatility, maxDrawdown, periodsPerYear } from "@/lib/stats";
 import { type ChartTrade, groupByBar, toChartTrade } from "@/lib/trades";
@@ -175,7 +175,8 @@ export function PriceView({ info, runs, recentDaily, dailyCount, firstDay }: Pro
     <div className="space-y-8">
       <section className="space-y-1">
         <p className="text-sm text-muted">
-          {info.name} · {info.market}
+          {info.name}
+          {!DEMO && ` · ${info.market}`}
         </p>
         <p className="text-4xl font-bold tracking-tight tabular-nums">{price(last.close)}</p>
         <p className={`text-sm font-medium tabular-nums ${tone(change)}`}>

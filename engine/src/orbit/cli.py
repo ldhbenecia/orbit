@@ -24,6 +24,7 @@ from orbit.backtest.runs import RunSpec, save_run
 from orbit.backtest.validate import check_rules, save_checks, specs_for
 from orbit.estimate.live import NEXT_OPEN_BASKETS, NextOpenView, build_view
 from orbit.marketdata.candle import Candle
+from orbit.marketdata.demo import demo_candles
 from orbit.marketdata.fund_nav import Nav, fetch_ace_nav, fetch_tiger_nav
 from orbit.marketdata.instruments import SEOUL, STOCK_INSTRUMENTS
 from orbit.marketdata.store import CandleStore
@@ -62,6 +63,16 @@ def main() -> None:
     serve = commands.add_parser("serve", help="대시보드용 조회 API 실행 (이 기기에서만 접속)")
     serve.add_argument("--db", type=Path, default=DEFAULT_DB)
     serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument(
+        "--demo",
+        action="store_true",
+        help="외부 시세(업비트 현재가·토스)를 부르지 않음 — 가상 데이터 DB 와 함께",
+    )
+
+    demo = commands.add_parser(
+        "demo-data", help="README 캡처용 가상 시세 DB 만들기 (실제 거래소 데이터 아님)"
+    )
+    demo.add_argument("--db", type=Path, default=DEFAULT_DB.with_name("demo.sqlite"))
 
     signal = commands.add_parser("signal", help="오늘의 규칙 신호 — 규칙마다 보유·현금·돌파 여부")
     signal.add_argument("--market", default="KRW-BTC")
@@ -101,10 +112,10 @@ def main() -> None:
     elif args.command == "serve":
         db = args.db
         # 외부 접속을 막기 위해 루프백에만 바인딩
-        toss = _toss_api()
+        toss = None if args.demo else _toss_api()
         app = create_app(
             lambda: sqlite3.connect(db),
-            get_ticker=try_fetch_ticker,
+            get_ticker=(lambda market: None) if args.demo else try_fetch_ticker,
             kr_trading_day_for=_kr_calendar(toss) if toss else None,
             next_open=_next_open(toss) if toss else None,
             # 첫 화면부터 빠르게 — 전 종목 일봉을 서버가 뜰 때 읽어 둠
@@ -113,6 +124,8 @@ def main() -> None:
         uvicorn.run(app, host="127.0.0.1", port=args.port)
     elif args.command == "backtest":
         _backtest(args.market, args.start, args.end, args.monthly, args.db)
+    elif args.command == "demo-data":
+        _demo_data(args.db)
     elif args.command == "validate":
         _validate(args.market or list(VALIDATED_MARKETS), args.db)
     elif args.command == "compare-strategies":
@@ -230,6 +243,23 @@ _GLOSSARY = [
     "  (기준가)      중간 입금 효과를 뺀 전략 자체의 성과",
     "  과거 데이터로 돌린 결과이며 앞으로도 같다는 뜻이 아님",
 ]
+
+
+def _demo_data(db: Path) -> None:
+    # 거래소 약관상 실제 시세는 공개 배포 금지 — README 화면은 이 가상 데이터로 찍음
+    end = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    markets = ["KRW-BTC", "KRW-ETH", *(i.market for i in STOCK_INSTRUMENTS)]
+    store = CandleStore.open(db)
+    for market in markets:
+        start = (
+            datetime(2018, 1, 1, tzinfo=UTC)
+            if market.startswith("KRW-")
+            else datetime(2016, 1, 1, tzinfo=UTC)
+        )
+        store.upsert(demo_candles(market, start, end), fetched_at=datetime.now(UTC))
+    store.close()
+    _validate(list(VALIDATED_MARKETS), db)
+    log.info("가상 시세 DB: %s — uv run orbit serve --demo --db %s", db, db)
 
 
 # 국내 ETF 는 호가 단위를 공식 확인하기 전이라 제외
