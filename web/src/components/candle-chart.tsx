@@ -14,7 +14,9 @@ import { formatCompactWonTicks, formatDate, formatWon } from "@/lib/format";
 
 type Props = {
   candles: ChartCandle[];
-  visibleDays: number | null; // null 이면 전체
+  initialBars: number | null; // 처음 보여줄 최근 막대 수, null 이면 전체
+  onVisibleChange: (from: number, to: number) => void; // 화면에 보이는 막대 인덱스 구간
+  onHover: (index: number | null) => void;
 };
 
 const ZOOM_SPEED = 0.03; // 라이브러리 기본 휠 줌은 트랙패드 핀치에 너무 느림
@@ -29,8 +31,12 @@ const formatTime = (time: Time) => {
   return `${time.year}년 ${time.month}월 ${time.day}일`;
 };
 
-export function CandleChart({ candles, visibleDays }: Props) {
+export function CandleChart({ candles, initialBars, onVisibleChange, onHover }: Props) {
   const container = useRef<HTMLDivElement>(null);
+  const callbacks = useRef({ onVisibleChange, onHover, count: candles.length });
+  useEffect(() => {
+    callbacks.current = { onVisibleChange, onHover, count: candles.length };
+  });
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
 
@@ -71,8 +77,18 @@ export function CandleChart({ candles, visibleDays }: Props) {
     // 트랙패드 핀치는 ctrl+wheel 로 들어옴 — 커서 위치를 중심으로 직접 확대·축소
     // 새 구간은 다음 프레임에 적용됨 — 한 프레임에 몰린 이벤트가 서로 덮어쓰지 않게 마지막 요청 구간을 기준으로 누적
     let pending: { from: number; to: number } | null = null;
-    chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
       pending = null;
+      const { count, onVisibleChange } = callbacks.current;
+      if (!range || count === 0) return;
+      const from = Math.min(count - 1, Math.max(0, Math.ceil(range.from)));
+      const to = Math.max(from, Math.min(count - 1, Math.floor(range.to)));
+      onVisibleChange(from, to);
+    });
+    chart.subscribeCrosshairMove((param) => {
+      const index = param.logical;
+      const inside = param.point !== undefined && index !== undefined && index >= 0 && index < callbacks.current.count;
+      callbacks.current.onHover(inside ? Math.round(index) : null);
     });
     const onWheel = (event: WheelEvent) => {
       if (!event.ctrlKey) return;
@@ -99,22 +115,21 @@ export function CandleChart({ candles, visibleDays }: Props) {
     };
   }, []);
 
-  useEffect(() => {
-    seriesRef.current?.setData(
-      candles.map((c) => ({ time: c.day, open: c.open, high: c.high, low: c.low, close: c.close })),
-    );
-  }, [candles]);
-
+  // 막대 단위가 바뀌면 데이터와 처음 보이는 구간을 같이 다시 잡음
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart) return;
-    if (visibleDays === null) {
+    const series = seriesRef.current;
+    if (!chart || !series) return;
+    series.setData(
+      candles.map((c) => ({ time: c.day, open: c.open, high: c.high, low: c.low, close: c.close })),
+    );
+    if (initialBars === null) {
       chart.timeScale().fitContent();
     } else {
       const last = candles.length - 1;
-      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - visibleDays), to: last + 1 });
+      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - initialBars), to: last + 1 });
     }
-  }, [candles, visibleDays]);
+  }, [candles, initialBars]);
 
   return <div ref={container} className="h-80 w-full sm:h-[26rem]" />;
 }
