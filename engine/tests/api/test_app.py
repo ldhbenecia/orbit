@@ -224,3 +224,29 @@ def test_일봉이_추가되거나_고쳐지면_캐시를_쓰지_않고_새로_�
     )
     assert [c["close"] for c in client.get("/candles").json()] == ["200", "300"]
     store.close()
+
+
+def test_다음_개장_추정은_국내_ETF_만_계산하고_실패하면_비움(tmp_path: Path) -> None:
+    from orbit.estimate.live import NextOpenView
+    from orbit.estimate.next_open import NextOpen
+
+    def view(market: str) -> NextOpenView:
+        if market == "KRX-360750":
+            raise httpx.ConnectError("허용 IP 아님")
+        result = NextOpen(
+            Decimal(7360), Decimal("7656.6"), Decimal("0.03"), Decimal("0.01"), Decimal("0.0403")
+        )
+        return NextOpenView(
+            state="ready",
+            next_open_day=date(2026, 10, 6),
+            kr_close_day=date(2026, 10, 2),
+            result=result,
+        )
+
+    db = tmp_path / "orbit.sqlite"
+    client = TestClient(create_app(lambda: sqlite3.connect(db), next_open=view))
+
+    body = client.get("/next-open", params={"market": "KRX-367380"}).json()
+    assert (body["estimate"], body["next_open_day"]) == ("7656.6", "2026-10-06")
+    assert client.get("/next-open", params={"market": "US-QQQ"}).json() is None
+    assert client.get("/next-open", params={"market": "KRX-360750"}).json() is None

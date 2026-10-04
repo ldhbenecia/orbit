@@ -9,6 +9,7 @@ import { type CandleOut, type ChartCandle, type Interval, toChartCandle } from "
 import { formatDate, formatPercent, formatPrice, formatSignedPrice } from "@/lib/format";
 import type { MarketInfo } from "@/lib/markets";
 import { ruleName } from "@/lib/rules";
+import { annualVolatility, maxDrawdown, periodsPerYear } from "@/lib/stats";
 import { type ChartTrade, groupByBar, toChartTrade } from "@/lib/trades";
 
 type Run = components["schemas"]["RunOut"];
@@ -165,8 +166,10 @@ export function PriceView({ info, runs, recentDaily, dailyCount, firstDay }: Pro
       ratio: range[range.length - 1].close / range[0].open - 1,
       high: Math.max(...range.map((c) => c.high)),
       low: Math.min(...range.map((c) => c.low)),
+      drawdown: maxDrawdown(range.map((c) => c.close)),
+      volatility: annualVolatility(range.map((c) => c.close), periodsPerYear(interval, info.group)),
     };
-  }, [candles, visible]);
+  }, [candles, visible, interval, info.group]);
 
   return (
     <div className="space-y-8">
@@ -268,6 +271,17 @@ export function PriceView({ info, runs, recentDaily, dailyCount, firstDay }: Pro
           </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <Stat label="구간 수익률" value={formatPercent(stats.ratio)} className={tone(stats.ratio)} />
+            <Stat
+              label="최대 하락"
+              hint="고점에서 가장 크게 내린 폭 (종가)"
+              value={stats.drawdown < 0 ? formatPercent(stats.drawdown) : "없음"}
+              className={tone(stats.drawdown)}
+            />
+            <Stat
+              label="연환산 변동성"
+              hint="봉마다 오르내린 폭을 1년 기준으로 — 클수록 출렁임이 큼"
+              value={stats.volatility === null ? "—" : `${(stats.volatility * 100).toFixed(1)}%`}
+            />
             <Stat label="최고가" value={price(stats.high)} />
             <Stat label="최저가" value={price(stats.low)} />
           </div>
@@ -282,10 +296,23 @@ export function PriceView({ info, runs, recentDaily, dailyCount, firstDay }: Pro
   );
 }
 
-function Stat({ label, value, className = "" }: { label: string; value: string; className?: string }) {
+function Stat({
+  label,
+  hint,
+  value,
+  className = "",
+}: {
+  label: string;
+  hint?: string;
+  value: string;
+  className?: string;
+}) {
   return (
-    <div className="flex min-w-0 items-baseline justify-between rounded-xl bg-subtle px-4 py-3 sm:block">
-      <p className="text-sm text-muted sm:text-xs">{label}</p>
+    <div className="flex min-w-0 items-baseline justify-between gap-3 rounded-xl bg-subtle px-4 py-3 sm:block">
+      <div className="min-w-0">
+        <p className="text-sm text-muted sm:text-xs">{label}</p>
+        {hint && <p className="text-[11px] leading-snug text-muted/80">{hint}</p>}
+      </div>
       <p className={`font-semibold tabular-nums sm:mt-1 sm:truncate sm:text-sm ${className}`}>{value}</p>
     </div>
   );

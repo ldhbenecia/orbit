@@ -1,6 +1,8 @@
 import logging
 import sqlite3
-from collections.abc import Callable
+import threading
+from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
@@ -11,6 +13,7 @@ from pydantic import BaseModel
 
 from orbit.backtest.runs import latest_runs, load_trades
 from orbit.dca.plan import next_payday, run_dca
+from orbit.estimate.live import NEXT_OPEN_BASKETS, NextOpenView
 from orbit.indicators.moving_average import sma
 from orbit.marketdata.aggregate import Interval, aggregate
 from orbit.marketdata.candle import Candle
@@ -96,6 +99,35 @@ class DcaOut(BaseModel):
     average_cost: Decimal | None  # 산 금액 ÷ 산 수량
 
 
+class NextOpenLegOut(BaseModel):
+    symbol: str
+    name: str
+    weight: Decimal  # 순자산 대비 비중 0~1
+    change: Decimal  # 한국 종가 이후 미국 등락 (달러 기준)
+
+
+class NextOpenOut(BaseModel):
+    state: Literal["ready", "kr_open"]  # 한국장 중에는 종가가 없어 계산하지 않음
+    next_open_day: date
+    kr_close_day: date | None
+    kr_close: Decimal | None
+    estimate: Decimal | None  # 다음 개장 추정가 — 원 미만 포함 계산값
+    change: Decimal | None  # 추정가 ÷ 한국 종가 − 1
+    basket_change: Decimal | None  # 달러 자산 가중 등락
+    fx_change: Decimal | None  # 한국 종가 시점 대비 원/달러
+    fx_reference: Decimal | None
+    fx_latest: Decimal | None
+    us_reference_day: date | None  # 한국 종가에 반영된 미국 거래일
+    us_latest_day: date | None  # 지금까지 끝난 최근 미국 거래일
+    us_pending: bool  # 다음 개장 전에 끝날 미국장이 남음
+    coverage: Decimal  # 시세를 반영한 비중 (현금 포함)
+    basis: Literal["proxy", "holdings"]  # 같은 지수 미국 ETF 로 근사 / 구성 종목으로 계산
+    legs: list[NextOpenLegOut]
+    nav_day: date | None  # 운용사가 올린 최신 기준가의 날짜
+    nav: Decimal | None  # 기준가 (1주당 순자산가치)
+    nav_estimate: Decimal | None  # 한국 종가와 같은 날 기준가에서 출발한 추정
+
+
 log = logging.getLogger(__name__)
 
 DCA_EXAMPLE_MONTHLY = Decimal(1_000_000)
@@ -117,9 +149,9 @@ def create_app(
     get_ticker: Callable[[str], Ticker | None] = _no_ticker,
     kr_trading_day_for: Callable[[date], date] | None = None,
     today: Callable[[], date] = lambda: datetime.now(SEOUL).date(),
+    next_open: Callable[[str], NextOpenView] | None = None,
+    warm_markets: Sequence[str] = (),
 ) -> FastAPI:
-    app = FastAPI(title="orbit", docs_url=None, redoc_url=None)
-
     # 전 기간 일봉을 Decimal 로 바꾸는 게 요청 비용 대부분 — DB 가 그대로면 읽어 둔 걸 씀
     cache: dict[str, tuple[tuple[int, int | None], list[Candle]]] = {}
 
@@ -137,6 +169,16 @@ def create_app(
             return list(cached[1])
         finally:
             conn.close()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        # 서버가 요청을 받기 시작한 뒤 백그라운드에서 — 첫 요청이 전 기간 일봉 변환을 기다리지 않게
+        threading.Thread(
+            target=lambda: [load_candles(m) for m in warm_markets], name="warm", daemon=True
+        ).start()
+        yield
+
+    app = FastAPI(title="orbit", docs_url=None, redoc_url=None, lifespan=lifespan)
 
     @app.get("/candles")
     def candles(
@@ -230,6 +272,45 @@ def create_app(
             else Decimal(0),
             worst_vs_invested=result.worst_vs_invested,
             average_cost=result.spent / result.qty if result.qty else None,
+        )
+
+    @app.get("/next-open")
+    def next_open_estimate(market: str) -> NextOpenOut | None:
+        # 국내 상장 미국 ETF — 한국 종가 뒤 미국장·환율 변동으로 다음 개장가를 추정
+        if next_open is None or market not in NEXT_OPEN_BASKETS:
+            return None
+        try:
+            view = next_open(market)
+        except httpx.HTTPError as error:
+            # 허용 IP 가 바뀌었거나 운용사 화면이 바뀌면 실패 — 화면은 "계산 못 함"으로
+            log.warning("다음 개장 추정 실패 %s: %s", market, type(error).__name__)
+            return None
+        r = view.result
+        return NextOpenOut(
+            state=view.state,
+            next_open_day=view.next_open_day,
+            kr_close_day=view.kr_close_day,
+            kr_close=r.kr_close if r else None,
+            estimate=r.estimate if r else None,
+            change=r.change if r else None,
+            basket_change=r.basket_change if r else None,
+            fx_change=r.fx_change if r else None,
+            fx_reference=view.fx_reference,
+            fx_latest=view.fx_latest,
+            us_reference_day=view.us_reference_day,
+            us_latest_day=view.us_latest_day,
+            us_pending=view.us_pending,
+            coverage=view.coverage,
+            basis=view.basis,
+            legs=[
+                NextOpenLegOut(
+                    symbol=leg.symbol, name=leg.name, weight=leg.weight, change=leg.change
+                )
+                for leg in view.legs
+            ],
+            nav_day=view.nav_day,
+            nav=view.nav,
+            nav_estimate=view.nav_estimate,
         )
 
     @app.get("/backtests")

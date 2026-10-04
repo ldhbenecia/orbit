@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 
 import { DcaCard } from "@/components/dca-card";
+import { NextOpenCard } from "@/components/next-open-card";
 import { PriceView } from "@/components/price-view";
 import { SignalCard } from "@/components/signal-card";
 import type { components } from "@/lib/api";
@@ -15,11 +16,15 @@ export default async function Page(props: PageProps<"/">) {
   await connection();
   const info = findMarket((await props.searchParams).market);
   const market = info.market;
-  const [candles, summary, runs, verdict] = await Promise.all([
+  const [candles, summary, runs, verdict, nextOpen] = await Promise.all([
     engineJson<CandleOut[]>(`/candles?market=${market}&interval=day&limit=${RECENT_DAILY}`),
     engineJson<components["schemas"]["CandlesSummaryOut"] | null>(`/candles/summary?market=${market}`),
     engineJson<components["schemas"]["RunOut"][]>(`/backtests?market=${market}`),
     verdictOf(info),
+    // 국내 상장 미국 ETF 만 — 엔진이 대상이 아니면 비워 보냄
+    market.startsWith("KRX-")
+      ? engineJson<components["schemas"]["NextOpenOut"] | null>(`/next-open?market=${market}`)
+      : null,
   ]);
 
   if (candles === null) return <Notice title="엔진 API 에 연결할 수 없어요" command="uv run --project engine orbit serve" />;
@@ -29,7 +34,8 @@ export default async function Page(props: PageProps<"/">) {
   // 넓은 화면은 토스증권처럼 왼쪽 차트·오른쪽 판단, 폰은 판단을 먼저
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-8">
-      <div className="lg:sticky lg:top-6 lg:order-2 lg:self-start">
+      <div className="space-y-4 lg:sticky lg:top-6 lg:order-2 lg:self-start">
+        {nextOpen && <NextOpenCard info={info} data={nextOpen} />}
         {verdict?.kind === "dca" && <DcaCard info={info} data={verdict.data} />}
         {verdict?.kind === "signals" && <SignalCard info={info} data={verdict.data} />}
       </div>

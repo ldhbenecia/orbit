@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/next-open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Next Open Estimate */
+        get: operations["next_open_estimate_next_open_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/backtests": {
         parameters: {
             query?: never;
@@ -190,6 +207,67 @@ export interface components {
          * @enum {string}
          */
         Interval: "day" | "week" | "month";
+        /** NextOpenLegOut */
+        NextOpenLegOut: {
+            /** Symbol */
+            symbol: string;
+            /** Name */
+            name: string;
+            /** Weight */
+            weight: string;
+            /** Change */
+            change: string;
+        };
+        /** NextOpenOut */
+        NextOpenOut: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "kr_open";
+            /**
+             * Next Open Day
+             * Format: date
+             */
+            next_open_day: string;
+            /** Kr Close Day */
+            kr_close_day: string | null;
+            /** Kr Close */
+            kr_close: string | null;
+            /** Estimate */
+            estimate: string | null;
+            /** Change */
+            change: string | null;
+            /** Basket Change */
+            basket_change: string | null;
+            /** Fx Change */
+            fx_change: string | null;
+            /** Fx Reference */
+            fx_reference: string | null;
+            /** Fx Latest */
+            fx_latest: string | null;
+            /** Us Reference Day */
+            us_reference_day: string | null;
+            /** Us Latest Day */
+            us_latest_day: string | null;
+            /** Us Pending */
+            us_pending: boolean;
+            /** Coverage */
+            coverage: string;
+            /**
+             * Basis
+             * @enum {string}
+             */
+            basis: "proxy" | "holdings";
+            /** Legs */
+            legs: components["schemas"]["NextOpenLegOut"][];
+            /** Nav Day */
+            nav_day: string | null;
+            /** Nav */
+            nav: string | null;
+            /** Nav Estimate */
+            nav_estimate: string | null;
+        };
         /** PricePositionOut */
         PricePositionOut: {
             /** Window */
@@ -263,7 +341,7 @@ export interface components {
          * Stance
          * @enum {string}
          */
-        Stance: "hold" | "cash" | "breakout_wait" | "breakout_hit";
+        Stance: "hold" | "cash" | "breakout_wait" | "breakout_hit" | "not_enough";
         /** TradeOut */
         TradeOut: {
             /**
@@ -418,6 +496,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DcaOut"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    next_open_estimate_next_open_get: {
+        parameters: {
+            query: {
+                market: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NextOpenOut"] | null;
                 };
             };
             /** @description Validation Error */

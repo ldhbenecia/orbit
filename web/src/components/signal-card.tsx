@@ -2,21 +2,25 @@ import type { components } from "@/lib/api";
 import { type Currency, formatDate, formatPrice } from "@/lib/format";
 import type { MarketInfo } from "@/lib/markets";
 import { ruleDescription, ruleParam, ruleShortName } from "@/lib/rules";
-import { buySideCount, STANCE } from "@/lib/summary";
+import { buySideCount, judged, STANCE } from "@/lib/summary";
 
 type Signals = components["schemas"]["SignalsOut"];
 type Signal = components["schemas"]["SignalOut"];
 
 export function SignalCard({ info, data }: { info: MarketInfo; data: Signals }) {
   const buySide = buySideCount(data);
-  const total = data.signals.length;
+  const total = judged(data).length;
+  const pending = data.signals.length - total;
 
   return (
     <section className="space-y-3 rounded-2xl bg-subtle p-5">
       <div className="space-y-1">
         <p className="text-sm text-muted">오늘의 규칙 신호 · {info.name}</p>
         <p className="text-xl font-bold">
-          규칙 {total}개 중 {buySide}개가 매수 쪽
+          {total > 0 ? `규칙 ${total}개 중 ${buySide}개가 매수 쪽` : "일봉이 모자라 아직 판단 전"}
+          {pending > 0 && total > 0 && (
+            <span className="ml-2 text-sm font-medium text-muted">{pending}개는 데이터 부족</span>
+          )}
         </p>
         <p className="text-xs text-muted">
           {formatDate(data.as_of.slice(0, 10))} 확정 봉 기준

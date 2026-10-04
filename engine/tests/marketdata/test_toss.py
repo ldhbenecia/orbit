@@ -29,6 +29,8 @@ class FakeToss:
         self.requests: list[httpx.Request] = []
         self.tokens_issued = 0
         self.reject_next_with_401 = False
+        self.slept: list[float] = []
+        self.reject_next_with_429 = False
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -42,6 +44,9 @@ class FakeToss:
                     "expires_in": 86400,
                 },
             )
+        if self.reject_next_with_429:
+            self.reject_next_with_429 = False
+            return httpx.Response(429, json={"error": {"code": "rate-limit-exceeded"}})
         if self.reject_next_with_401:
             self.reject_next_with_401 = False
             return httpx.Response(401, json={"error": {"code": "expired-token"}})
@@ -56,7 +61,14 @@ class FakeToss:
         client = httpx.Client(
             base_url="https://openapi.tossinvest.com", transport=httpx.MockTransport(self.handler)
         )
-        return TossMarketData(client, SecretStr("id"), SecretStr("secret"), clock=lambda: now[0])
+
+        def sleep(seconds: float) -> None:
+            self.slept.append(seconds)
+            now[0] += seconds
+
+        return TossMarketData(
+            client, SecretStr("id"), SecretStr("secret"), clock=lambda: now[0], sleep=sleep
+        )
 
 
 @pytest.mark.parametrize(
@@ -145,3 +157,30 @@ def test_여러_스레드가_동시에_불러도_토큰은_한_번만_발급() -
         list(pool.map(lambda _: api.get("/api/v1/candles", {"symbol": "QQQ"}), range(32)))
 
     assert fake.tokens_issued == 1
+
+
+def test_그룹별_초당_한도를_넘기_전에_기다림() -> None:
+    # 장 캘린더·환율은 같은 그룹, 초당 3회
+    fake = FakeToss()
+    api = fake.api()
+
+    for _ in range(3):
+        api.get("/api/v1/market-calendar/KR", {})
+    assert fake.slept == []
+
+    api.get("/api/v1/exchange-rate", {})
+    assert fake.slept == [1.2]  # 첫 요청이 구간(1초 + 여유)을 벗어날 때까지
+
+    api.get("/api/v1/candles", {})  # 다른 그룹은 따로 셈
+    assert fake.slept == [1.2]
+
+
+def test_429_면_한_번만_쉬고_재시도() -> None:
+    fake = FakeToss()
+    fake.reject_next_with_429 = True
+    api = fake.api()
+
+    api.get("/api/v1/candles", {"symbol": "QQQ"})
+
+    assert fake.slept == [1.2]
+    assert [r.url.path for r in fake.requests].count("/api/v1/candles") == 2

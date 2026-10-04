@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -18,16 +19,20 @@ PAGE_SIZE = 200  # 토스 캔들 API 한 번에 최대 200개
 TOKEN_MARGIN_SEC = 60  # 만료 직전 토큰으로 요청하다 끊기지 않게 여유
 
 # 같은 키로 주문도 가능해서 조회 경로만 허용 — 주문·계좌 경로는 요청 전에 거부
-ALLOWED_PATHS = frozenset(
-    {
-        "/api/v1/candles",
-        "/api/v1/prices",
-        "/api/v1/stocks",
-        "/api/v1/exchange-rate",
-        "/api/v1/market-calendar/KR",
-        "/api/v1/market-calendar/US",
-    }
-)
+# 조회 경로 → 호출 한도 그룹. 이 표에 없는 경로(주문·계좌)는 요청 전에 거부
+PATH_GROUPS = {
+    "/api/v1/candles": "MARKET_DATA_CHART",
+    "/api/v1/prices": "MARKET_DATA",
+    "/api/v1/stocks": "STOCK",
+    "/api/v1/exchange-rate": "MARKET_INFO",
+    "/api/v1/market-calendar/KR": "MARKET_INFO",
+    "/api/v1/market-calendar/US": "MARKET_INFO",
+}
+ALLOWED_PATHS = frozenset(PATH_GROUPS)
+# 공식 문서의 클라이언트 × 그룹별 초당 한도 — 넘으면 429
+GROUP_LIMITS = {"MARKET_DATA_CHART": 20, "MARKET_DATA": 15, "STOCK": 5, "MARKET_INFO": 3}
+# 1초 경계에 딱 맞춰 보내면 도착 시각 차이로 서버가 한 구간에 넣어 셀 수 있음
+RATE_WINDOW_SEC = 1.2
 ACCOUNT_HEADER = "X-Tossinvest-Account"
 
 
@@ -48,6 +53,7 @@ class TossMarketData:
         client_id: SecretStr,
         client_secret: SecretStr,
         clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._client = client
         self._client_id = client_id
@@ -56,15 +62,24 @@ class TossMarketData:
         self._token: _Token | None = None
         # 토큰은 클라이언트당 1개 — 여러 스레드가 동시에 재발급하면 서로의 토큰을 무효화함
         self._token_lock = threading.Lock()
+        self._sleep = sleep
+        self._sent: dict[str, deque[float]] = {group: deque() for group in GROUP_LIMITS}
+        self._group_locks = {group: threading.Lock() for group in GROUP_LIMITS}
 
     def get(self, path: str, params: dict[str, str | int]) -> dict[str, Any]:
         if path not in ALLOWED_PATHS:
             raise ForbiddenPathError(f"토스 조회 허용 경로가 아님: {path}")
+        self._wait_turn(PATH_GROUPS[path])
         response = self._client.get(path, params=params, headers=self._auth())
         if response.status_code == 401:
             # 다른 곳에서 재발급해 무효가 된 토큰일 수 있음 — 한 번만 새로 받고 재시도
             with self._token_lock:
                 self._token = None
+            response = self._client.get(path, params=params, headers=self._auth())
+        if response.status_code == 429:
+            # 같은 키를 쓰는 다른 프로세스(동기화 등)와 겹치면 한도를 넘음 — 한 번만 쉬고 재시도
+            self._sleep(RATE_WINDOW_SEC)
+            self._wait_turn(PATH_GROUPS[path])
             response = self._client.get(path, params=params, headers=self._auth())
         response.raise_for_status()
         body: dict[str, Any] = json.loads(response.text)
@@ -93,6 +108,19 @@ class TossMarketData:
         if result["today"].get("integrated") is not None:
             return day
         return date.fromisoformat(result["previousBusinessDay"]["date"])
+
+    def _wait_turn(self, group: str) -> None:
+        # 최근 구간 안에 한도만큼 보냈으면 가장 오래된 요청이 구간을 벗어날 때까지 기다림
+        limit, sent = GROUP_LIMITS[group], self._sent[group]
+        with self._group_locks[group]:
+            while True:
+                now = self._clock()
+                while sent and now - sent[0] >= RATE_WINDOW_SEC:
+                    sent.popleft()
+                if len(sent) < limit:
+                    sent.append(now)
+                    return
+                self._sleep(RATE_WINDOW_SEC - (now - sent[0]))
 
     def _auth(self) -> dict[str, str]:
         with self._token_lock:

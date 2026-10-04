@@ -1,13 +1,9 @@
 import type { components } from "@/lib/api";
-import { formatDate, formatKoreanWon, formatPercent1, formatWon } from "@/lib/format";
+import { formatDate, formatDateWithWeekday, formatKoreanWon, formatPercent1, formatWon } from "@/lib/format";
 import type { MarketInfo } from "@/lib/markets";
 import { NEAR, position, tone } from "@/lib/summary";
 
 type Dca = components["schemas"]["DcaOut"];
-
-const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
-
-const withWeekday = (day: string) => `${formatDate(day)} (${WEEKDAYS[new Date(`${day}T00:00:00Z`).getUTCDay()]})`;
 
 // 코어 ETF 는 다른 계좌에서 매달 25일(휴일이면 직전 영업일) 적립 — 보유/현금이 아니라 적립 관점으로 보여줌
 export function DcaCard({ info, data }: { info: MarketInfo; data: Dca }) {
@@ -21,7 +17,7 @@ export function DcaCard({ info, data }: { info: MarketInfo; data: Dca }) {
       <div className="space-y-1">
         <p className="text-sm text-muted">적립식 분석 · {info.name}</p>
         <p className="text-xl font-bold">
-          다음 적립일 {withWeekday(data.next_payday)}
+          다음 적립일 {formatDateWithWeekday(data.next_payday)}
           <span className="ml-2 text-base font-medium text-muted">
             {data.days_until === 0 ? "오늘" : `D-${data.days_until}`}
           </span>

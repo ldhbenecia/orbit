@@ -9,9 +9,13 @@ export const STANCE: Record<Stance, { label: string; tone: string; buySide: bool
   cash: { label: "현금 구간", tone: "text-down", buySide: false },
   breakout_hit: { label: "오늘 돌파함", tone: "text-up", buySide: true },
   breakout_wait: { label: "돌파 대기", tone: "text-muted", buySide: false },
+  not_enough: { label: "데이터 부족", tone: "text-muted", buySide: false },
 };
 
-export const buySideCount = (data: Signals) => data.signals.filter((s) => STANCE[s.stance].buySide).length;
+// 일봉이 모자라 판단 못 한 규칙은 "매수 아님"이 아니라 집계에서 뺌
+export const judged = (data: Signals) => data.signals.filter((s) => s.stance !== "not_enough");
+
+export const buySideCount = (data: Signals) => judged(data).filter((s) => STANCE[s.stance].buySide).length;
 
 // 기호(+/−) 대신 말로 — 적립하는 입장에서는 평균보다 싸게 사는지가 관심사
 export const NEAR = 0.005; // 0.5% 안쪽은 평균과 같다고 봄 — 색으로 강조하지 않음
@@ -27,7 +31,8 @@ export type Line = { text: string; tone: string; sub?: { text: string; tone: str
 // 종목 타일의 한 줄 — 모두 매수 쪽·모두 아님일 때만 색, 섞이면 중립
 export const signalLine = (data: Signals): Line => {
   const buySide = buySideCount(data);
-  const total = data.signals.length;
+  const total = judged(data).length;
+  if (total === 0) return { text: "일봉이 모자라 판단 전", tone: "text-muted" };
   return {
     text: `규칙 ${total}개 중 ${buySide}개 매수 쪽`,
     tone: buySide === total ? "text-up" : buySide === 0 ? "text-down" : "text-foreground",
