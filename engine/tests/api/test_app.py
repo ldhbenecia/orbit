@@ -2,7 +2,7 @@ import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -167,3 +167,34 @@ def test_최근_N개만_돌려주고_전체_범위는_요약으로(tmp_path: Pat
     assert [c["start"][:10] for c in recent] == [d.date().isoformat() for d in days[-3:]]
     assert (summary["first"][:10], summary["count"]) == ("2024-01-01", 10)
     assert client.get("/candles", params={"limit": 0}).status_code == 422
+
+
+def test_적립식_분석(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    store = CandleStore.open(db)
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    days = [
+        start + timedelta(days=i) for i in range(200) if (start + timedelta(days=i)).weekday() < 5
+    ]
+    store.upsert(
+        [
+            Candle("KRX-367380", d, *(Decimal(10_000 + i * 10),) * 4, Decimal(1))
+            for i, d in enumerate(days)
+        ],
+        fetched_at=D,
+    )
+    store.close()
+    app = create_app(
+        lambda: sqlite3.connect(db),
+        kr_trading_day_for=lambda d: d - timedelta(days=1) if d.day == 25 and d.month == 6 else d,
+        today=lambda: date(2026, 6, 10),
+    )
+
+    body = TestClient(app).get("/dca", params={"market": "KRX-367380"}).json()
+
+    assert body["next_payday"] == "2026-06-24"  # 6-25 휴장이라 직전 영업일
+    assert body["days_until"] == 14
+    assert body["holidays_checked"] is True
+    assert body["months"] == 6  # 1~6월 — 데이터가 7-17 에서 끝나 7월 적립일은 아직
+    assert [p["window"] for p in body["positions"]] == [60, 120]
+    assert Decimal(body["return_on_invested"]) > 0  # 계속 오르는 가격
