@@ -31,6 +31,9 @@ class CandleStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         return cls(sqlite3.connect(path))
 
+    def close(self) -> None:
+        self._conn.close()
+
     def upsert(self, candles: list[Candle]) -> None:
         with self._conn:
             self._conn.executemany(
