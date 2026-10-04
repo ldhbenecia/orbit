@@ -5,7 +5,7 @@ import sqlite3
 import subprocess
 import sys
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -86,7 +86,11 @@ def main() -> None:
     elif args.command == "serve":
         db = args.db
         # 외부 접속을 막기 위해 루프백에만 바인딩
-        app = create_app(lambda: sqlite3.connect(db), get_ticker=try_fetch_ticker)
+        app = create_app(
+            lambda: sqlite3.connect(db),
+            get_ticker=try_fetch_ticker,
+            kr_trading_day_for=_kr_calendar(),
+        )
         uvicorn.run(app, host="127.0.0.1", port=args.port)
     elif args.command == "backtest":
         _backtest(args.market, args.start, args.end, args.monthly, args.db)
@@ -298,3 +302,23 @@ def _sync_stocks(db: Path) -> None:
                 period,
             )
     store.close()
+
+
+def _kr_calendar() -> Callable[[date], date] | None:
+    # 서버가 떠 있는 동안 토큰을 재사용하도록 클라이언트를 하나만 둠, 같은 날짜는 한 번만 물음
+    settings = Settings()
+    if settings.toss_client_id is None or settings.toss_client_secret is None:
+        return None
+    api = TossMarketData(
+        httpx.Client(base_url=TOSS_BASE_URL, timeout=10),
+        settings.toss_client_id,
+        settings.toss_client_secret,
+    )
+    cache: dict[date, date] = {}
+
+    def trading_day_for(day: date) -> date:
+        if day not in cache:
+            cache[day] = api.kr_trading_day_for(day)
+        return cache[day]
+
+    return trading_day_for

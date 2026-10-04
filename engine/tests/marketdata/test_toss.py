@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
@@ -134,3 +135,13 @@ def test_서머타임이_끝나도_뉴욕_거래일로_날짜를_잡음() -> Non
     row = _candle("2026-12-01") | {"timestamp": "2026-12-01T14:00:00.000+09:00"}
 
     assert _to_candle("US-QQQ", NEW_YORK, row).start == datetime(2026, 12, 1, tzinfo=UTC)
+
+
+def test_여러_스레드가_동시에_불러도_토큰은_한_번만_발급() -> None:
+    fake = FakeToss()
+    api = fake.api()
+
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(lambda _: api.get("/api/v1/candles", {"symbol": "QQQ"}), range(32)))
+
+    assert fake.tokens_issued == 1

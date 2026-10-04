@@ -1,4 +1,5 @@
 import json
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -53,6 +54,8 @@ class TossMarketData:
         self._client_secret = client_secret
         self._clock = clock
         self._token: _Token | None = None
+        # 토큰은 클라이언트당 1개 — 여러 스레드가 동시에 재발급하면 서로의 토큰을 무효화함
+        self._token_lock = threading.Lock()
 
     def get(self, path: str, params: dict[str, str | int]) -> dict[str, Any]:
         if path not in ALLOWED_PATHS:
@@ -60,7 +63,8 @@ class TossMarketData:
         response = self._client.get(path, params=params, headers=self._auth())
         if response.status_code == 401:
             # 다른 곳에서 재발급해 무효가 된 토큰일 수 있음 — 한 번만 새로 받고 재시도
-            self._token = None
+            with self._token_lock:
+                self._token = None
             response = self._client.get(path, params=params, headers=self._auth())
         response.raise_for_status()
         body: dict[str, Any] = json.loads(response.text)
@@ -83,10 +87,18 @@ class TossMarketData:
                 break
         return sorted(collected, key=lambda c: c.start)
 
+    def kr_trading_day_for(self, day: date) -> date:
+        # day 가 휴장이면 그 전 영업일 — 평일 공휴일(한글날 등)은 요일만으로 알 수 없음
+        result = self.get("/api/v1/market-calendar/KR", {"date": day.isoformat()})["result"]
+        if result["today"].get("integrated") is not None:
+            return day
+        return date.fromisoformat(result["previousBusinessDay"]["date"])
+
     def _auth(self) -> dict[str, str]:
-        if self._token is None or self._clock() >= self._token.expires_at:
-            self._token = self._issue_token()
-        return {"Authorization": f"Bearer {self._token.value}"}
+        with self._token_lock:
+            if self._token is None or self._clock() >= self._token.expires_at:
+                self._token = self._issue_token()
+            return {"Authorization": f"Bearer {self._token.value}"}
 
     def _issue_token(self) -> _Token:
         response = self._client.post(

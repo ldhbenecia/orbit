@@ -60,3 +60,15 @@ export const formatPriceTicks = (currency: Currency) => (values: number[]) => {
   }
   return values.map(usd.format);
 };
+
+// 큰 원화 금액은 억·만 단위로 — 139,007,948 → "1억 3,901만원"
+export const formatKoreanWon = (value: number) => {
+  const man = Math.round(Math.abs(value) / 10_000);
+  const eok = Math.floor(man / 10_000);
+  const rest = man % 10_000;
+  const sign = value < 0 ? "-" : "";
+  if (eok === 0) return `${sign}${won.format(rest)}만원`;
+  return `${sign}${eok}억${rest ? ` ${won.format(rest)}만` : ""}원`;
+};
+
+export const formatPercent1 = (ratio: number) => `${ratio > 0 ? "+" : ""}${(ratio * 100).toFixed(1)}%`;

@@ -8,6 +8,7 @@ export type MarketInfo = {
   group: MarketGroup;
   currency: Currency;
   source: string; // 시세 출처 — 화면 하단 설명
+  core?: boolean; // 사용자가 다른 계좌에서 매달 적립하는 코어 ETF — 보유/현금 신호 대신 적립식 분석
 };
 
 export const GROUPS: readonly { value: MarketGroup; label: string }[] = [
@@ -21,8 +22,8 @@ export const MARKETS: readonly MarketInfo[] = [
   { market: "KRW-ETH", name: "이더리움", group: "coin", currency: "KRW", source: "업비트 원화" },
   { market: "US-QQQ", name: "QQQ", group: "stock", currency: "USD", source: "토스증권 (수정주가)" },
   { market: "US-SPY", name: "SPY", group: "stock", currency: "USD", source: "토스증권 (수정주가)" },
-  { market: "KRX-367380", name: "ACE 미국나스닥100", group: "stock", currency: "KRW", source: "토스증권 (수정주가)" },
-  { market: "KRX-360750", name: "TIGER 미국S&P500", group: "stock", currency: "KRW", source: "토스증권 (수정주가)" },
+  { market: "KRX-367380", name: "ACE 미국나스닥100", group: "stock", currency: "KRW", source: "토스증권 (수정주가)", core: true },
+  { market: "KRX-360750", name: "TIGER 미국S&P500", group: "stock", currency: "KRW", source: "토스증권 (수정주가)", core: true },
 ];
 
 export const findMarket = (value: string | string[] | undefined): MarketInfo =>

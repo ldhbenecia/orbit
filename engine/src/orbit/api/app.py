@@ -1,15 +1,20 @@
+import logging
 import sqlite3
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
+import httpx
 from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
 from orbit.backtest.runs import latest_runs, load_trades
+from orbit.dca.plan import next_payday, run_dca
+from orbit.indicators.moving_average import sma
 from orbit.marketdata.aggregate import Interval, aggregate
 from orbit.marketdata.candle import Candle
+from orbit.marketdata.instruments import SEOUL
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.upbit_ticker import Ticker
 from orbit.signals.today import Stance, is_upbit_market, today_signals
@@ -37,6 +42,8 @@ class SignalOut(BaseModel):
     reason: str
     days: int | None
     trigger: Decimal | None
+    close: Decimal  # 판단에 쓴 마지막 확정 봉 종가
+    reference: Decimal | None  # 판단 기준 가격 (이동평균 등)
 
 
 class SignalsOut(BaseModel):
@@ -66,6 +73,41 @@ class TradeOut(BaseModel):
     reason: str
 
 
+class PricePositionOut(BaseModel):
+    window: int  # 거래일
+    average: Decimal
+    gap: Decimal  # 종가 ÷ 평균 − 1
+
+
+class DcaOut(BaseModel):
+    as_of: datetime  # 마지막 확정 봉
+    close: Decimal
+    next_payday: date
+    days_until: int  # 한국 날짜 기준 다음 적립일까지 남은 날
+    holidays_checked: bool  # 장 캘린더로 공휴일까지 확인했는지 — 아니면 주말만 피함
+    positions: list[PricePositionOut]
+    monthly: Decimal  # 백테스트 예시 금액 (개인 금액 아님)
+    first_buy: datetime | None
+    months: int
+    invested: Decimal
+    final_value: Decimal
+    return_on_invested: Decimal
+    worst_vs_invested: Decimal
+    average_cost: Decimal | None  # 산 금액 ÷ 산 수량
+
+
+log = logging.getLogger(__name__)
+
+DCA_EXAMPLE_MONTHLY = Decimal(1_000_000)
+POSITION_WINDOWS = (60, 120)
+
+
+def _weekday_only(day: date) -> date:
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return day
+
+
 def _no_ticker(market: str) -> Ticker | None:
     return None
 
@@ -73,6 +115,8 @@ def _no_ticker(market: str) -> Ticker | None:
 def create_app(
     connect: Callable[[], sqlite3.Connection],
     get_ticker: Callable[[str], Ticker | None] = _no_ticker,
+    kr_trading_day_for: Callable[[date], date] | None = None,
+    today: Callable[[], date] = lambda: datetime.now(SEOUL).date(),
 ) -> FastAPI:
     app = FastAPI(title="orbit", docs_url=None, redoc_url=None)
 
@@ -129,9 +173,54 @@ def create_app(
                     reason=s.reason,
                     days=s.days,
                     trigger=s.trigger,
+                    close=s.close,
+                    reference=s.reference,
                 )
                 for s in today_signals(market, loaded, ticker)
             ],
+        )
+
+    @app.get("/dca")
+    def dca(market: str) -> DcaOut | None:
+        # 코어 ETF 적립식 분석 — 매달 25일(휴일이면 직전 영업일)에 산다고 봄
+        loaded = load_candles(market)
+        if not loaded:
+            return None
+        result = run_dca(loaded, DCA_EXAMPLE_MONTHLY)
+        last = loaded[-1]
+        closes = [c.close for c in loaded]
+        positions = []
+        for window in POSITION_WINDOWS:
+            average = sma(closes[-window:], window)
+            if average is not None:
+                positions.append(
+                    PricePositionOut(window=window, average=average, gap=last.close / average - 1)
+                )
+        now = today()
+        payday, checked = next_payday(now, _weekday_only), False
+        if kr_trading_day_for is not None:
+            try:
+                payday, checked = next_payday(now, kr_trading_day_for), True
+            except httpx.HTTPError as error:
+                # 허용 IP 가 바뀌는 등으로 장 캘린더를 못 받으면 주말만 피하고 미확인으로 표시
+                log.warning("장 캘린더 조회 실패: %s", type(error).__name__)
+        return DcaOut(
+            as_of=last.start,
+            close=last.close,
+            next_payday=payday,
+            days_until=(payday - now).days,
+            holidays_checked=checked,
+            positions=positions,
+            monthly=DCA_EXAMPLE_MONTHLY,
+            first_buy=result.buys[0].day if result.buys else None,
+            months=int(result.invested / DCA_EXAMPLE_MONTHLY),  # 적립한 달 수 (못 산 달 포함)
+            invested=result.invested,
+            final_value=result.final_value,
+            return_on_invested=result.final_value / result.invested - 1
+            if result.invested
+            else Decimal(0),
+            worst_vs_invested=result.worst_vs_invested,
+            average_cost=result.spent / result.qty if result.qty else None,
         )
 
     @app.get("/backtests")

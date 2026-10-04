@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 
+import { DcaCard } from "@/components/dca-card";
 import { MarketSwitcher } from "@/components/market-switcher";
 import { PriceView } from "@/components/price-view";
 import { SignalCard } from "@/components/signal-card";
@@ -14,11 +15,13 @@ export default async function Page(props: PageProps<"/">) {
   await connection();
   const info = findMarket((await props.searchParams).market);
   const market = info.market;
-  const [candles, summary, signals, runs] = await Promise.all([
+  const [candles, summary, signals, runs, dca] = await Promise.all([
     engineJson<CandleOut[]>(`/candles?market=${market}&interval=day&limit=${RECENT_DAILY}`),
     engineJson<components["schemas"]["CandlesSummaryOut"] | null>(`/candles/summary?market=${market}`),
     engineJson<components["schemas"]["SignalsOut"]>(`/signals?market=${market}`),
     engineJson<components["schemas"]["RunOut"][]>(`/backtests?market=${market}`),
+    // 코어 ETF 는 보유/현금 신호 대신 적립식 분석
+    info.core ? engineJson<components["schemas"]["DcaOut"] | null>(`/dca?market=${market}`) : null,
   ]);
 
   return (
@@ -30,7 +33,7 @@ export default async function Page(props: PageProps<"/">) {
         <Notice title="아직 받은 일봉이 없어요" command={`uv run --project engine orbit sync-candles --market ${market}`} />
       ) : (
         <div className="space-y-10">
-          {signals && <SignalCard info={info} data={signals} />}
+          {info.core ? dca && <DcaCard info={info} data={dca} /> : signals && <SignalCard info={info} data={signals} />}
           <PriceView
             key={market}
             info={info}
