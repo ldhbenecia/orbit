@@ -10,6 +10,7 @@ import httpx
 
 from orbit.estimate.next_open import Leg, NextOpen, estimate_next_open, us_closes_around
 from orbit.marketdata.candle import Candle
+from orbit.marketdata.fund_nav import Nav
 from orbit.marketdata.instruments import NEW_YORK, SEOUL, find_instrument
 from orbit.marketdata.tiger_holdings import Holding
 
@@ -23,14 +24,19 @@ LOOKBACK = timedelta(days=14)  # 연휴가 길어도 직전 종가가 들어올 
 class Basket:
     # 같은 지수를 따르는 미국 ETF 하나로 근사하거나, 운용사가 공개한 구성 종목으로 계산
     proxy: str | None = None
-    tiger_fund: str | None = None  # 운용사 펀드 코드 (ksdFund)
+    holdings_fund: str | None = None  # TIGER 운용사 펀드 코드 (ksdFund) — 구성 종목 출처
+    nav_source: tuple[Literal["tiger", "ace"], str] | None = None  # 기준가 공시 운용사·펀드 코드
 
 
 # 이름에 (H) 가 없는 환노출 ETF 만 — 환헤지 ETF 는 환율을 곱하면 틀림
+# 펀드 코드는 운용사 사이트에서 토스 종목 정보의 ISIN 으로 찾은 값
 NEXT_OPEN_BASKETS = {
-    "KRX-367380": Basket(proxy="QQQ"),  # 나스닥100 추종 — QQQ 로 근사
-    "KRX-360750": Basket(proxy="SPY"),  # S&P500 추종 — SPY 로 근사
-    "KRX-0183J0": Basket(tiger_fund="KR70183J0002"),  # 미국 우주 종목 10개 — 구성 종목으로
+    # 나스닥100 추종 — QQQ 로 근사
+    "KRX-367380": Basket(proxy="QQQ", nav_source=("ace", "K55101DB1182")),
+    # S&P500 추종 — SPY 로 근사
+    "KRX-360750": Basket(proxy="SPY", nav_source=("tiger", "KR7360750004")),
+    # 미국 우주 종목 10개 — 구성 종목으로
+    "KRX-0183J0": Basket(holdings_fund="KR70183J0002", nav_source=("tiger", "KR70183J0002")),
 }
 
 
@@ -70,6 +76,10 @@ class NextOpenView:
     coverage: Decimal = Decimal(1)  # 시세를 반영한 비중 (현금 포함)
     legs: tuple[PricedLeg, ...] = ()
     basis: Literal["proxy", "holdings"] = "proxy"
+    nav_day: date | None = None  # 운용사가 올린 최신 기준가의 날짜
+    nav: Decimal | None = None
+    # 한국 종가와 같은 날 기준가에서 출발한 추정 — 종가의 괴리(프리미엄)가 사라진다고 보는 쪽
+    nav_estimate: Decimal | None = None
 
 
 def _at(value: str) -> datetime:
@@ -93,6 +103,7 @@ def build_view(
     source: MarketSource,
     holdings_for: Callable[[str], list[Holding]],
     now: datetime,
+    nav_for: Callable[[str, str], Nav | None] = lambda kind, fund: None,
 ) -> NextOpenView:
     basket = NEXT_OPEN_BASKETS[market]
     instrument = find_instrument(market)
@@ -131,8 +142,8 @@ def build_view(
         cash = Decimal(0)
         unpriced = Decimal(0)
     else:
-        assert basket.tiger_fund is not None
-        holdings = holdings_for(basket.tiger_fund)
+        assert basket.holdings_fund is not None
+        holdings = holdings_for(basket.holdings_fund)
         targets = [
             (SYMBOL_ALIASES.get(h.symbol, h.symbol), h.name, h.weight)
             for h in holdings
@@ -172,6 +183,10 @@ def build_view(
     us_ends = [_us_regular_end(us_calendar.get(k)) for k in ("today", "nextBusinessDay")]
     us_pending = any(end is not None and now < end <= next_open_at for end in us_ends)
 
+    nav = nav_for(*basket.nav_source) if basket.nav_source else None
+    # 다른 날 기준가를 쓰면 반영된 미국장이 달라져 틀림 — 한국 종가와 같은 날 것만
+    nav_estimate = nav[1] * (1 + result.change) if nav is not None and nav[0] == kr_day else None
+
     return NextOpenView(
         state="ready",
         next_open_day=next_open,
@@ -185,6 +200,9 @@ def build_view(
         coverage=1 - unpriced / total_weight,
         legs=tuple(PricedLeg(leg.symbol, leg.name, leg.weight, leg.change) for leg in legs),
         basis="proxy" if basket.proxy is not None else "holdings",
+        nav_day=nav[0] if nav else None,
+        nav=nav[1] if nav else None,
+        nav_estimate=nav_estimate,
     )
 
 

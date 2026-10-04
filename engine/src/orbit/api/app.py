@@ -123,6 +123,9 @@ class NextOpenOut(BaseModel):
     coverage: Decimal  # 시세를 반영한 비중 (현금 포함)
     basis: Literal["proxy", "holdings"]  # 같은 지수 미국 ETF 로 근사 / 구성 종목으로 계산
     legs: list[NextOpenLegOut]
+    nav_day: date | None  # 운용사가 올린 최신 기준가의 날짜
+    nav: Decimal | None  # 기준가 (1주당 순자산가치)
+    nav_estimate: Decimal | None  # 한국 종가와 같은 날 기준가에서 출발한 추정
 
 
 log = logging.getLogger(__name__)
@@ -305,6 +308,9 @@ def create_app(
                 )
                 for leg in view.legs
             ],
+            nav_day=view.nav_day,
+            nav=view.nav,
+            nav_estimate=view.nav_estimate,
         )
 
     @app.get("/backtests")

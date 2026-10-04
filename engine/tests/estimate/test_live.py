@@ -172,3 +172,28 @@ def test_옛_심볼은_확인된_새_심볼로_시세를_받음() -> None:
     view = build_view("KRX-0183J0", source, lambda fund: holdings, NOW)
 
     assert [leg.symbol for leg in view.legs] == ["ECHO"] and view.coverage == 1
+
+
+def test_한국_종가와_같은_날_기준가가_있으면_기준가에서도_추정() -> None:
+    source = FakeSource(
+        SUNDAY_KR,
+        SUNDAY_US,
+        {
+            "367380": [_candle("KRX-367380", date(2026, 10, 2), "7360")],
+            "QQQ": [
+                _candle("US-QQQ", date(2026, 10, 1), "100"),
+                _candle("US-QQQ", date(2026, 10, 2), "103"),
+            ],
+        },
+    )
+
+    same_day = build_view(
+        "KRX-367380", source, _no_holdings, NOW, lambda k, f: (date(2026, 10, 2), Decimal(7300))
+    )
+    stale = build_view(
+        "KRX-367380", source, _no_holdings, NOW, lambda k, f: (date(2026, 10, 1), Decimal(7400))
+    )
+
+    assert same_day.nav_estimate == Decimal("7594.19")  # 7300 × 1.03 × 1.01
+    # 하루 늦게 올라온 기준가는 반영된 미국장이 달라 쓰지 않음 — 날짜만 알려 줌
+    assert stale.nav_estimate is None and stale.nav_day == date(2026, 10, 1)

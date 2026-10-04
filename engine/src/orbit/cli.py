@@ -23,6 +23,7 @@ from orbit.backtest.metrics import Metrics, compute_metrics
 from orbit.backtest.runs import RunSpec, save_run
 from orbit.estimate.live import NEXT_OPEN_BASKETS, NextOpenView, build_view
 from orbit.marketdata.candle import Candle
+from orbit.marketdata.fund_nav import Nav, fetch_ace_nav, fetch_tiger_nav
 from orbit.marketdata.instruments import SEOUL, STOCK_INSTRUMENTS
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.sync import sync_daily_candles, sync_stock_daily
@@ -341,6 +342,7 @@ def _kr_calendar(api: TossMarketData) -> Callable[[date], date]:
 
 # 토스 호출이 종목당 10번 넘게 일어남 — 시세 갱신 주기(1분)만큼만 재사용
 NEXT_OPEN_TTL = timedelta(minutes=1)
+NAV_TTL = timedelta(minutes=10)
 NEXT_OPEN_STALE = timedelta(minutes=5)  # 이보다 오래된 미리 계산 값은 쓰지 않음
 
 
@@ -368,6 +370,7 @@ class _SharedGets:
 def _next_open(api: TossMarketData) -> Callable[[str], NextOpenView]:
     source = _SharedGets(api)
     tiger = httpx.Client(base_url=TIGER_BASE_URL, timeout=10)
+    fund_sites = httpx.Client(timeout=10)  # 운용사 기준가 (TIGER·ACE)
     holdings: dict[tuple[str, date], list[Holding]] = {}
     views: dict[str, tuple[datetime, NextOpenView]] = {}
     lock = threading.Lock()
@@ -379,13 +382,31 @@ def _next_open(api: TossMarketData) -> Callable[[str], NextOpenView]:
             holdings[key] = fetch_holdings(tiger, fund)
         return holdings[key]
 
+    navs: dict[tuple[str, str], tuple[datetime, Nav | None]] = {}
+
+    def nav_for(kind: str, fund: str) -> Nav | None:
+        # 운용사 기준가는 장 마감 뒤 한 번 바뀜 — 10분마다만 다시 받음
+        now = datetime.now(UTC)
+        cached = navs.get((kind, fund))
+        if cached is None or now - cached[0] >= NAV_TTL:
+            fetch = fetch_tiger_nav if kind == "tiger" else fetch_ace_nav
+            try:
+                nav = fetch(fund_sites, fund)
+            except (httpx.HTTPError, ValueError, TypeError, KeyError) as error:
+                # 기준가는 보조 정보 — 운용사 응답이 바뀌어도 종가 기준 추정은 그대로 보임
+                log.warning("기준가 조회 실패 %s %s: %s", kind, fund, type(error).__name__)
+                nav = None
+            cached = (now, nav)
+            navs[(kind, fund)] = cached
+        return cached[1]
+
     def refresh(market: str) -> NextOpenView:
         # 같은 종목을 백그라운드와 요청이 동시에 계산해 토스를 중복 호출하지 않게
         with lock:
             now = datetime.now(UTC)
             cached = views.get(market)
             if cached is None or now - cached[0] >= NEXT_OPEN_TTL:
-                cached = (now, build_view(market, source, holdings_for, now))
+                cached = (now, build_view(market, source, holdings_for, now, nav_for))
                 views[market] = cached
             return cached[1]
 
