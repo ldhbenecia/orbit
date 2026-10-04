@@ -22,7 +22,7 @@ export function MarketSwitcher({ current, children }: { current: string; childre
     <div className="space-y-6">
       <div className="space-y-3">
         <GroupTabs value={selected.group} onChange={(group) => go(marketsOf(group)[0].market)} />
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" role="tablist" aria-label="종목">
+        <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4" role="tablist" aria-label="종목">
           {marketsOf(selected.group).map((m) => (
             <button
               key={m.market}

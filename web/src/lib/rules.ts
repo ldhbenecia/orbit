@@ -14,6 +14,21 @@ export const ruleName = (spec: string, group: MarketGroup) => {
   return spec;
 };
 
+// 좁은 화면에서 한 줄에 들어가도록 이름은 짧게, 기간·파라미터는 따로
+export const ruleShortName = (spec: string, group: MarketGroup) => {
+  const [name, arg] = spec.split("-");
+  if (name === "ma") return `최근 ${arg}${group === "stock" ? "거래일" : "일"} 평균가 규칙`;
+  if (name === "vb") return "변동성 돌파 규칙";
+  return ruleName(spec, group);
+};
+
+export const ruleParam = (spec: string, group: MarketGroup) => {
+  const [name, arg] = spec.split("-");
+  if (name === "ma") return `약 ${months(Number(arg), group)}개월`;
+  if (name === "vb") return `k ${arg}`;
+  return null;
+};
+
 export const ruleDescription = (spec: string) => {
   const [name, arg] = spec.split("-");
   if (name === "ma") return "가격이 이 기간 평균보다 높으면 들고, 낮으면 팔고 쉬는 규칙";

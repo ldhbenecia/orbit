@@ -1,7 +1,7 @@
 import type { components } from "@/lib/api";
 import { type Currency, formatDate, formatPrice } from "@/lib/format";
 import type { MarketInfo } from "@/lib/markets";
-import { ruleDescription, ruleName } from "@/lib/rules";
+import { ruleDescription, ruleParam, ruleShortName } from "@/lib/rules";
 
 type Signals = components["schemas"]["SignalsOut"];
 type Signal = components["schemas"]["SignalOut"];
@@ -52,26 +52,18 @@ function SignalRow({ signal, info }: { signal: Signal; info: MarketInfo }) {
   const currency: Currency = info.currency;
   const price = (value: string) => formatPrice(Number(value), currency);
   const stance = STANCE[signal.stance];
-  const detail = signal.trigger
-    ? `기준선 ${price(signal.trigger)}`
-    : signal.days
-      ? `${signal.days}일째`
-      : null;
+  const detail = signal.days ? `${signal.days}일째` : null;
 
+  const meta = [ruleParam(signal.strategy, info.group), signal.status, detail].filter(Boolean).join(" · ");
+
+  // 좁은 화면에서 이름·상태가 줄바꿈으로 쪼개지지 않게 첫 줄엔 짧은 이름과 상태만
   return (
     <li className="space-y-1.5 py-3">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="font-medium">
-          {ruleName(signal.strategy, info.group)}
-          <span className="ml-2 rounded-md bg-background px-1.5 py-0.5 text-xs font-normal text-muted">
-            {signal.status}
-          </span>
-        </p>
-        <p className={`shrink-0 text-sm font-semibold ${stance.tone}`}>
-          {stance.label}
-          {detail && <span className="ml-1 font-normal text-muted tabular-nums">· {detail}</span>}
-        </p>
+        <p className="min-w-0 font-medium">{ruleShortName(signal.strategy, info.group)}</p>
+        <p className={`shrink-0 text-sm font-semibold ${stance.tone}`}>{stance.label}</p>
       </div>
+      <p className="text-xs text-muted tabular-nums">{meta}</p>
       <p className="text-xs text-muted">{ruleDescription(signal.strategy)}</p>
       {signal.reference ? (
         <ReferenceLine close={price(signal.close)} reference={price(signal.reference)} gap={Number(signal.close) / Number(signal.reference) - 1} />
