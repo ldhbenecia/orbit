@@ -1,7 +1,7 @@
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from orbit.api.app import create_app
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.store import CandleStore
+from orbit.marketdata.upbit_ticker import Ticker
 
 D = datetime(2024, 1, 1, tzinfo=UTC)
 
@@ -82,3 +83,31 @@ def test_실서버_동시_요청에도_DB_연결이_스레드를_넘지_않음(t
         thread.join()
 
     assert set(codes) == {200}
+
+
+def test_오늘의_규칙_신호(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    store = CandleStore.open(db)
+    days = [D + timedelta(days=i) for i in range(210)]
+    prices = [Decimal(1000 + i) for i in range(len(days))]  # 매일 오름 → 이동평균 위
+    store.upsert(
+        [Candle("KRW-BTC", d, p, p, p, p, Decimal(1)) for d, p in zip(days, prices, strict=True)],
+        fetched_at=D,
+    )
+    store.close()
+    ticker = Ticker(
+        day=days[-1] + timedelta(days=1),
+        open=Decimal(2000),
+        high=Decimal(2001),
+        price=Decimal(2000),
+    )
+    client = TestClient(create_app(lambda: CandleStore.open(db), get_ticker=lambda market: ticker))
+
+    body = client.get("/signals").json()
+
+    assert body["as_of"] == days[-1].strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert body["price"] == "2000"
+    by_name = {s["strategy"]: s for s in body["signals"]}
+    assert by_name["ma-120"]["stance"] == "hold"
+    assert by_name["ma-120"]["status"] == "실험 중"
+    assert by_name["vb-0.5"]["trigger"] == "2000"  # 전날 변동폭 0 (시·고·저·종 같음)
