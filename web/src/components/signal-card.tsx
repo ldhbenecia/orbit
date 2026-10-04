@@ -13,14 +13,14 @@ const STANCE: Record<Stance, { label: string; tone: string; buySide: boolean }> 
   breakout_wait: { label: "돌파 대기", tone: "text-muted", buySide: false },
 };
 
-export function SignalCard({ data }: { data: Signals }) {
+export function SignalCard({ name, data }: { name: string; data: Signals }) {
   const buySide = data.signals.filter((s) => STANCE[s.stance].buySide).length;
   const total = data.signals.length;
 
   return (
     <section className="space-y-3 rounded-2xl bg-subtle p-5">
       <div className="space-y-1">
-        <p className="text-sm text-muted">오늘의 규칙 신호</p>
+        <p className="text-sm text-muted">오늘의 규칙 신호 · {name}</p>
         <p className="text-xl font-bold">
           규칙 {total}개 중 {buySide}개가 매수 쪽
         </p>
