@@ -1,9 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type ReactNode, useState, useTransition } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState, useTransition } from "react";
 
-import { SegmentedControl } from "@/components/segmented-control";
 import { findMarket, GROUPS, type MarketGroup, marketsOf } from "@/lib/markets";
 
 // 서버가 새 종목 화면을 그리는 동안에도 선택 표시는 바로 움직이고, 아래 내용은 흐리게 — 눌렀는데 반응이 없다고 느끼지 않게
@@ -21,24 +20,70 @@ export function MarketSwitcher({ current, children }: { current: string; childre
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <SegmentedControl
-          label="자산"
-          options={GROUPS}
-          value={selected.group}
-          onChange={(group: MarketGroup) => go(marketsOf(group)[0].market)}
-        />
-        <SegmentedControl
-          key={selected.group}
-          label="종목"
-          options={marketsOf(selected.group).map((m) => ({ value: m.market, label: m.name }))}
-          value={selected.market}
-          onChange={go}
-        />
+      <div className="space-y-3">
+        <GroupTabs value={selected.group} onChange={(group) => go(marketsOf(group)[0].market)} />
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" role="tablist" aria-label="종목">
+          {marketsOf(selected.group).map((m) => (
+            <button
+              key={m.market}
+              type="button"
+              role="tab"
+              aria-selected={m.market === selected.market}
+              onClick={() => go(m.market)}
+              className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                m.market === selected.market
+                  ? "bg-foreground text-background"
+                  : "bg-subtle text-muted hover:text-foreground"
+              }`}
+            >
+              {m.name}
+            </button>
+          ))}
+        </div>
       </div>
       <div className={`transition-opacity duration-200 ${pending ? "opacity-50" : ""}`} aria-busy={pending}>
         {children}
       </div>
+    </div>
+  );
+}
+
+// 글자 길이가 달라 밑줄 위치·너비를 실제 버튼 크기로 잡음
+function GroupTabs({ value, onChange }: { value: MarketGroup; onChange: (group: MarketGroup) => void }) {
+  const buttons = useRef<Partial<Record<MarketGroup, HTMLButtonElement | null>>>({});
+  const [line, setLine] = useState<{ left: number; width: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = buttons.current[value];
+    if (el) setLine({ left: el.offsetLeft, width: el.offsetWidth });
+  }, [value]);
+
+  return (
+    <div className="relative flex gap-5 border-b border-border" role="tablist" aria-label="자산">
+      {GROUPS.map((g) => (
+        <button
+          key={g.value}
+          ref={(el) => {
+            buttons.current[g.value] = el;
+          }}
+          type="button"
+          role="tab"
+          aria-selected={g.value === value}
+          onClick={() => onChange(g.value)}
+          className={`pb-2.5 text-lg font-bold transition-colors ${
+            g.value === value ? "text-foreground" : "text-muted hover:text-foreground"
+          }`}
+        >
+          {g.label}
+        </button>
+      ))}
+      {line && (
+        <span
+          aria-hidden
+          className="absolute -bottom-px h-0.5 rounded-full bg-foreground transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none"
+          style={{ left: line.left, width: line.width }}
+        />
+      )}
     </div>
   );
 }
