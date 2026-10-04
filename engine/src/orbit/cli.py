@@ -4,10 +4,13 @@ import logging
 import sqlite3
 import subprocess
 import sys
+import threading
 from collections.abc import Callable
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 import uvicorn
@@ -17,9 +20,12 @@ from orbit.backtest.compare import compare_lump_vs_dca, select_period
 from orbit.backtest.engine import DEFAULT_CONFIG, Funding, run_backtest
 from orbit.backtest.metrics import Metrics, compute_metrics
 from orbit.backtest.runs import RunSpec, save_run
-from orbit.marketdata.instruments import STOCK_INSTRUMENTS
+from orbit.estimate.live import NextOpenView, build_view
+from orbit.marketdata.candle import Candle
+from orbit.marketdata.instruments import SEOUL, STOCK_INSTRUMENTS
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.sync import sync_daily_candles, sync_stock_daily
+from orbit.marketdata.tiger_holdings import TIGER_BASE_URL, Holding, fetch_holdings
 from orbit.marketdata.toss import BASE_URL as TOSS_BASE_URL
 from orbit.marketdata.toss import TossMarketData
 from orbit.marketdata.upbit_candles import BASE_URL
@@ -86,10 +92,12 @@ def main() -> None:
     elif args.command == "serve":
         db = args.db
         # 외부 접속을 막기 위해 루프백에만 바인딩
+        toss = _toss_api()
         app = create_app(
             lambda: sqlite3.connect(db),
             get_ticker=try_fetch_ticker,
-            kr_trading_day_for=_kr_calendar(),
+            kr_trading_day_for=_kr_calendar(toss) if toss else None,
+            next_open=_next_open(toss) if toss else None,
         )
         uvicorn.run(app, host="127.0.0.1", port=args.port)
     elif args.command == "backtest":
@@ -304,16 +312,20 @@ def _sync_stocks(db: Path) -> None:
     store.close()
 
 
-def _kr_calendar() -> Callable[[date], date] | None:
-    # 서버가 떠 있는 동안 토큰을 재사용하도록 클라이언트를 하나만 둠, 같은 날짜는 한 번만 물음
+def _toss_api() -> TossMarketData | None:
+    # 토큰은 클라이언트당 하나만 유효 — 서버 안에서는 이 클라이언트 하나만 씀
     settings = Settings()
     if settings.toss_client_id is None or settings.toss_client_secret is None:
         return None
-    api = TossMarketData(
+    return TossMarketData(
         httpx.Client(base_url=TOSS_BASE_URL, timeout=10),
         settings.toss_client_id,
         settings.toss_client_secret,
     )
+
+
+def _kr_calendar(api: TossMarketData) -> Callable[[date], date]:
+    # 같은 날짜는 한 번만 물음
     cache: dict[date, date] = {}
 
     def trading_day_for(day: date) -> date:
@@ -322,3 +334,55 @@ def _kr_calendar() -> Callable[[date], date] | None:
         return cache[day]
 
     return trading_day_for
+
+
+# 토스 호출이 종목당 10번 넘게 일어남 — 시세 갱신 주기(1분)만큼만 재사용
+NEXT_OPEN_TTL = timedelta(minutes=1)
+
+
+class _SharedGets:
+    # 장 캘린더·지금 환율은 세 ETF 가 똑같이 부름 — 초당 3회 그룹이라 같은 요청은 1분간 재사용
+    def __init__(self, api: TossMarketData) -> None:
+        self._api = api
+        self._cache: dict[str, tuple[datetime, dict[str, Any]]] = {}
+
+    def get(self, path: str, params: dict[str, str | int]) -> dict[str, Any]:
+        key = f"{path}?{sorted(params.items())}"
+        now = datetime.now(UTC)
+        cached = self._cache.get(key)
+        if cached is None or now - cached[0] >= NEXT_OPEN_TTL:
+            cached = (now, self._api.get(path, params))
+            self._cache[key] = cached
+        return cached[1]
+
+    def daily_candles(
+        self, symbol: str, market: str, exchange_tz: ZoneInfo, since: date
+    ) -> list[Candle]:
+        return self._api.daily_candles(symbol, market, exchange_tz, since)
+
+
+def _next_open(api: TossMarketData) -> Callable[[str], NextOpenView]:
+    source = _SharedGets(api)
+    tiger = httpx.Client(base_url=TIGER_BASE_URL, timeout=10)
+    holdings: dict[tuple[str, date], list[Holding]] = {}
+    views: dict[str, tuple[datetime, NextOpenView]] = {}
+    lock = threading.Lock()
+
+    def holdings_for(fund: str) -> list[Holding]:
+        # 운용사 구성 종목은 하루 한 번 바뀜
+        key = (fund, datetime.now(SEOUL).date())
+        if key not in holdings:
+            holdings[key] = fetch_holdings(tiger, fund)
+        return holdings[key]
+
+    def view_for(market: str) -> NextOpenView:
+        now = datetime.now(UTC)
+        # 동시에 들어온 요청이 토스를 중복 호출하지 않게 한 번에 하나만 계산
+        with lock:
+            cached = views.get(market)
+            if cached is None or now - cached[0] >= NEXT_OPEN_TTL:
+                cached = (now, build_view(market, source, holdings_for, now))
+                views[market] = cached
+            return cached[1]
+
+    return view_for
