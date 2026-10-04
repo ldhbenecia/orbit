@@ -5,11 +5,11 @@
 config/*.local.yaml
 
 # 개인 거래 데이터 — 잔고·주문·체결·백테스트 산출물
-data/
+/data/
 *.sqlite
 *.sqlite3
 *.db
-reports/
+/reports/
 
 # python
 __pycache__/
