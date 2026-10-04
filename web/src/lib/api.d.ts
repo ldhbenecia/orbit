@@ -261,6 +261,12 @@ export interface components {
             basis: "proxy" | "holdings";
             /** Legs */
             legs: components["schemas"]["NextOpenLegOut"][];
+            /** Nav Day */
+            nav_day: string | null;
+            /** Nav */
+            nav: string | null;
+            /** Nav Estimate */
+            nav_estimate: string | null;
         };
         /** PricePositionOut */
         PricePositionOut: {

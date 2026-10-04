@@ -40,6 +40,8 @@ export function NextOpenCard({ info, data }: { info: MarketInfo; data: NextOpen 
         </div>
       </div>
 
+      <NavLine data={data} />
+
       <ul className="divide-y divide-border text-sm">
         <li className="flex items-baseline justify-between gap-3 py-2">
           <span className="text-muted">
@@ -113,4 +115,39 @@ export function NextOpenCard({ info, data }: { info: MarketInfo; data: NextOpen 
       </p>
     </section>
   );
+}
+
+// 종가가 기준가(NAV)보다 비싸게·싸게 거래되면(괴리) 다음 날 그 차이가 사라질 수도 있음 — 두 출발점을 나란히
+function NavLine({ data }: { data: NextOpen }) {
+  if (data.nav_estimate !== null && data.nav !== null && data.kr_close !== null && data.kr_close_day !== null) {
+    const close = Number(data.kr_close);
+    const premium = close / Number(data.nav) - 1;
+    const fromNav = Number(data.nav_estimate) / close - 1;
+    return (
+      <div className="space-y-1 rounded-xl bg-background px-4 py-3 text-sm">
+        <p className="flex items-baseline justify-between gap-3">
+          <span className="text-muted">기준가에서 출발하면</span>
+          <span className="tabular-nums">
+            <span className="font-semibold">약 {formatWon(Math.round(Number(data.nav_estimate)))}</span>
+            <span className={`ml-2 text-xs ${tone(fromNav)}`}>{formatPercent(fromNav)}</span>
+          </span>
+        </p>
+        <p className="text-xs text-muted">
+          {formatMonthDay(data.kr_close_day)} 기준가 {formatWon(Math.round(Number(data.nav)))} — 종가가{" "}
+          {Math.abs(premium) < 0.0005
+            ? "기준가와 거의 같았어요"
+            : `기준가보다 ${(Math.abs(premium) * 100).toFixed(1)}% ${premium > 0 ? "비쌌어요" : "쌌어요"}`}
+          . 이 차이(괴리)가 다음 날 사라지면 이쪽에 가까워요.
+        </p>
+      </div>
+    );
+  }
+  if (data.nav_day !== null) {
+    return (
+      <p className="text-xs text-muted">
+        기준가는 운용사가 {formatMonthDay(data.nav_day)} 것까지 올렸어요 — 종가와 같은 날 기준가가 올라오면 함께 보여줘요.
+      </p>
+    );
+  }
+  return null;
 }
