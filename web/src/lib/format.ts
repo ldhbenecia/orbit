@@ -30,3 +30,33 @@ export const formatCompactWonTicks = (values: number[]) => {
   }
   return values.map(formatWon);
 };
+
+export type Currency = "KRW" | "USD";
+
+const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
+export const formatPrice = (value: number, currency: Currency) =>
+  currency === "USD" ? usd.format(value) : formatWon(value);
+
+export const formatSignedPrice = (value: number, currency: Currency) =>
+  currency === "USD" ? `${value > 0 ? "+" : ""}${usd.format(value)}` : formatSignedWon(value);
+
+const usdTicks = [0, 2].map(
+  (digits) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    }),
+);
+
+// 축 눈금 — 원은 억·만 축약, 달러는 정수로 구분되면 정수로
+export const formatPriceTicks = (currency: Currency) => (values: number[]) => {
+  if (currency === "KRW") return formatCompactWonTicks(values);
+  for (const format of usdTicks) {
+    const labels = values.map(format.format);
+    if (new Set(labels).size === labels.length) return labels;
+  }
+  return values.map(usd.format);
+};

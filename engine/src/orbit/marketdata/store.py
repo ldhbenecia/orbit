@@ -6,9 +6,10 @@ from orbit.db.migrations import migrate
 from orbit.marketdata.candle import Candle
 from orbit.units import from_units, to_units
 
-QUOTE_SCALES = {
-    "KRW": 0
-}  # 호가 통화별 소수 자릿수 — 100원 이상 가격대만 호가가 1원 이상 단위라 저가 코인은 거부됨
+# 마켓 앞부분별 가격 소수 자릿수
+# KRW(업비트): 100원 이상 가격대만 호가가 1원 이상 단위라 저가 코인은 거부됨
+# US: 1달러 미만 종목은 0.0001달러 단위라 4자리, KRX: 원 단위
+QUOTE_SCALES = {"KRW": 0, "US": 4, "KRX": 0}
 VOLUME_SCALE = 8  # 코인 수량 최소 단위 (사토시)
 
 _COLUMNS = "market, start_ts, open, high, low, close, volume, fetched_ts"

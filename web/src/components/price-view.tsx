@@ -6,7 +6,8 @@ import { CandleChart, type ChartMarker } from "@/components/candle-chart";
 import { SegmentedControl } from "@/components/segmented-control";
 import type { components } from "@/lib/api";
 import type { ChartCandle, Interval } from "@/lib/candles";
-import { formatDate, formatPercent, formatSignedWon, formatWon } from "@/lib/format";
+import { formatDate, formatPercent, formatPrice, formatSignedPrice } from "@/lib/format";
+import type { MarketInfo } from "@/lib/markets";
 import { ruleName } from "@/lib/rules";
 import { type ChartTrade, groupByBar, toChartTrade } from "@/lib/trades";
 
@@ -35,14 +36,14 @@ const barLabel = (day: string, interval: Interval) => {
 };
 
 type Props = {
-  market: string;
-  name: string;
+  info: MarketInfo;
   runs: Run[];
   daily: ChartCandle[];
   byInterval: Record<Interval, ChartCandle[]>;
 };
 
-export function PriceView({ market, name, runs, daily, byInterval }: Props) {
+export function PriceView({ info, runs, daily, byInterval }: Props) {
+  const price = (value: number) => formatPrice(value, info.currency);
   const [interval, setInterval] = useState<Interval>("day");
   const [runId, setRunId] = useState<number | null>(null);
   const [tradesByRun, setTradesByRun] = useState<Record<number, TradesState>>({});
@@ -81,7 +82,7 @@ export function PriceView({ market, name, runs, daily, byInterval }: Props) {
   const legendTrades = bars.get(legend.day);
   const legendTradeText = legendTrades
     ? [...legendTrades.buys, ...legendTrades.sells]
-        .map((t) => `${t.side === "buy" ? "매수" : "매도"} ${formatWon(t.price)} · ${t.reason}`)
+        .map((t) => `${t.side === "buy" ? "매수" : "매도"} ${price(t.price)} · ${t.reason}`)
         .join(" / ")
     : null;
 
@@ -116,11 +117,11 @@ export function PriceView({ market, name, runs, daily, byInterval }: Props) {
     <div className="space-y-8">
       <section className="space-y-1">
         <p className="text-sm text-muted">
-          {name} · {market}
+          {info.name} · {info.market}
         </p>
-        <p className="text-4xl font-bold tracking-tight tabular-nums">{formatWon(last.close)}</p>
+        <p className="text-4xl font-bold tracking-tight tabular-nums">{price(last.close)}</p>
         <p className={`text-sm font-medium tabular-nums ${tone(change)}`}>
-          {formatSignedWon(change)} ({formatPercent(change / prev.close)})
+          {formatSignedPrice(change, info.currency)} ({formatPercent(change / prev.close)})
           <span className="ml-1 font-normal text-muted">전일 대비</span>
         </p>
         <p className="pt-1 text-xs text-muted">{formatDate(last.day)} 종가 기준</p>
@@ -168,16 +169,16 @@ export function PriceView({ market, name, runs, daily, byInterval }: Props) {
         <div className="flex min-h-10 flex-wrap content-start items-baseline gap-x-3 gap-y-1 text-xs tabular-nums sm:min-h-5">
           <span className="font-medium">{barLabel(legend.day, interval)}</span>
           <span className="text-muted">
-            시 <span className="text-foreground">{formatWon(legend.open)}</span>
+            시 <span className="text-foreground">{price(legend.open)}</span>
           </span>
           <span className="text-muted">
-            고 <span className="text-up">{formatWon(legend.high)}</span>
+            고 <span className="text-up">{price(legend.high)}</span>
           </span>
           <span className="text-muted">
-            저 <span className="text-down">{formatWon(legend.low)}</span>
+            저 <span className="text-down">{price(legend.low)}</span>
           </span>
           <span className="text-muted">
-            종 <span className={tone(legendChange)}>{formatWon(legend.close)}</span>
+            종 <span className={tone(legendChange)}>{price(legend.close)}</span>
           </span>
         </div>
 
@@ -191,6 +192,7 @@ export function PriceView({ market, name, runs, daily, byInterval }: Props) {
         )}
 
         <CandleChart
+          currency={info.currency}
           candles={candles}
           markers={markers}
           initialBars={option.initialBars}
@@ -206,15 +208,15 @@ export function PriceView({ market, name, runs, daily, byInterval }: Props) {
           </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <Stat label="구간 수익률" value={formatPercent(stats.ratio)} className={tone(stats.ratio)} />
-            <Stat label="최고가" value={formatWon(stats.high)} />
-            <Stat label="최저가" value={formatWon(stats.low)} />
+            <Stat label="최고가" value={price(stats.high)} />
+            <Stat label="최저가" value={price(stats.low)} />
           </div>
         </section>
       )}
 
       <p className="text-xs leading-relaxed text-muted">
-        업비트 원화 시세 {formatDate(daily[0].day)}부터 {formatDate(last.day)}까지. 하루가 끝나 확정된 봉만
-        보여주고, 아직 진행 중인 오늘 봉은 빼요. 주봉·월봉은 업비트와 같은 기준(월요일·1일 시작)으로 일봉을 묶어요.
+        {info.source} 시세 {formatDate(daily[0].day)}부터 {formatDate(last.day)}까지. 거래일이 끝나 확정된 봉만
+        보여주고, 아직 진행 중인 봉은 빼요. 주봉·월봉은 월요일·1일 시작 기준으로 일봉을 묶어요.
       </p>
     </div>
   );

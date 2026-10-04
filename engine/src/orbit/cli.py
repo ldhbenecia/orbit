@@ -17,11 +17,15 @@ from orbit.backtest.compare import compare_lump_vs_dca, select_period
 from orbit.backtest.engine import DEFAULT_CONFIG, Funding, run_backtest
 from orbit.backtest.metrics import Metrics, compute_metrics
 from orbit.backtest.runs import RunSpec, save_run
+from orbit.marketdata.instruments import STOCK_INSTRUMENTS
 from orbit.marketdata.store import CandleStore
-from orbit.marketdata.sync import sync_daily_candles
+from orbit.marketdata.sync import sync_daily_candles, sync_stock_daily
+from orbit.marketdata.toss import BASE_URL as TOSS_BASE_URL
+from orbit.marketdata.toss import TossMarketData
 from orbit.marketdata.upbit_candles import BASE_URL
 from orbit.marketdata.upbit_ticker import try_fetch_ticker
-from orbit.signals.today import Stance, today_signals
+from orbit.settings import Settings
+from orbit.signals.today import Stance, is_upbit_market, today_signals
 from orbit.strategies.registry import build_strategy
 
 log = logging.getLogger("orbit")
@@ -40,6 +44,11 @@ def main() -> None:
     sync = commands.add_parser("sync-candles", help="업비트 일봉을 받아 로컬 DB 에 저장")
     sync.add_argument("--market", default="KRW-BTC")
     sync.add_argument("--db", type=Path, default=DEFAULT_DB)
+
+    stocks = commands.add_parser(
+        "sync-stocks", help="토스증권에서 등록한 주식·ETF 일봉을 받아 저장"
+    )
+    stocks.add_argument("--db", type=Path, default=DEFAULT_DB)
 
     serve = commands.add_parser("serve", help="대시보드용 조회 API 실행 (이 기기에서만 접속)")
     serve.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -72,6 +81,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "sync-candles":
         _sync_candles(args.market, args.db)
+    elif args.command == "sync-stocks":
+        _sync_stocks(args.db)
     elif args.command == "serve":
         db = args.db
         # 외부 접속을 막기 위해 루프백에만 바인딩
@@ -249,13 +260,41 @@ def _signal(market: str, db: Path) -> None:
     if len(candles) < 2:
         log.error("일봉이 없음 — 먼저 orbit sync-candles 실행")
         return
-    ticker = try_fetch_ticker(market)
-    price = f"현재가 {ticker.price:,.0f}원" if ticker else "현재가 조회 실패 — 돌파 여부 제외"
+    ticker = try_fetch_ticker(market) if is_upbit_market(market) else None
+    if ticker:
+        price = f"현재가 {ticker.price:,.0f}원"
+    elif is_upbit_market(market):
+        price = "현재가 조회 실패 — 돌파 여부 제외"
+    else:
+        price = "주식은 확정 일봉 기준"
     log.info("%s 규칙 신호 (%s 확정 봉 기준, %s)\n", market, f"{candles[-1].start:%Y-%m-%d}", price)
-    for s in today_signals(candles, ticker):
+    for s in today_signals(market, candles, ticker):
         extra = f" · {s.days}일째" if s.days else ""
         if s.trigger is not None:
             extra = f" · 기준선 {s.trigger:,.0f}원"
         log.info("  %-8s %-10s [%s]%s", s.strategy, _STANCE_LABEL[s.stance], s.status, extra)
         log.info("           %s", s.reason)
     log.info("\n규칙이 말하는 상태일 뿐 투자 권유가 아님. 실험 중 규칙은 검증 전")
+
+
+def _sync_stocks(db: Path) -> None:
+    settings = Settings()
+    if settings.toss_client_id is None or settings.toss_client_secret is None:
+        log.error(".env 에 TOSS_CLIENT_ID · TOSS_CLIENT_SECRET 이 없음")
+        return
+    store = CandleStore.open(db)
+    with httpx.Client(base_url=TOSS_BASE_URL, timeout=10) as client:
+        api = TossMarketData(client, settings.toss_client_id, settings.toss_client_secret)
+        for instrument in STOCK_INSTRUMENTS:
+            result = sync_stock_daily(api, store, instrument, now=datetime.now(UTC))
+            period = f"{result.first:%Y-%m-%d} ~ {result.last:%Y-%m-%d}" if result.first else "없음"
+            log.info(
+                "%s %s 일봉 %d개 저장 (진행 중 %d개 제외), 누적 %d개 %s",
+                instrument.market,
+                instrument.name,
+                result.saved,
+                result.skipped_open,
+                result.total,
+                period,
+            )
+    store.close()

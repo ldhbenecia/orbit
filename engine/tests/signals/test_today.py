@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from orbit.marketdata.upbit_ticker import Ticker, parse_ticker
-from orbit.signals.today import Stance, today_signal
+from orbit.signals.today import Stance, today_signal, today_signals
 from tests.backtest.test_engine import candles
 
 D0 = datetime(2024, 1, 1, tzinfo=UTC)
@@ -69,3 +69,11 @@ def test_기준선은_호가_단위로_올림() -> None:
     signal = today_signal("vb-0.5", history, _ticker(today, 115_216_000, 0))
 
     assert signal.trigger == Decimal(115_548_000)  # 115,216,000 + 331,500 → 1,000원 호가로 올림
+
+
+def test_주식은_이동평균_규칙만() -> None:
+    history = candles([(10, 10)] * 3 + [(20, 20)])
+
+    specs = [s.strategy for s in today_signals("US-QQQ", history, None)]
+
+    assert specs == ["ma-60", "ma-120", "ma-200"]

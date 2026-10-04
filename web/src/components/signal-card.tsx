@@ -1,5 +1,6 @@
 import type { components } from "@/lib/api";
-import { formatDate, formatWon } from "@/lib/format";
+import { type Currency, formatDate, formatPrice } from "@/lib/format";
+import type { MarketInfo } from "@/lib/markets";
 import { ruleName } from "@/lib/rules";
 
 type Signals = components["schemas"]["SignalsOut"];
@@ -13,26 +14,30 @@ const STANCE: Record<Stance, { label: string; tone: string; buySide: boolean }> 
   breakout_wait: { label: "돌파 대기", tone: "text-muted", buySide: false },
 };
 
-export function SignalCard({ name, data }: { name: string; data: Signals }) {
+export function SignalCard({ info, data }: { info: MarketInfo; data: Signals }) {
   const buySide = data.signals.filter((s) => STANCE[s.stance].buySide).length;
   const total = data.signals.length;
 
   return (
     <section className="space-y-3 rounded-2xl bg-subtle p-5">
       <div className="space-y-1">
-        <p className="text-sm text-muted">오늘의 규칙 신호 · {name}</p>
+        <p className="text-sm text-muted">오늘의 규칙 신호 · {info.name}</p>
         <p className="text-xl font-bold">
           규칙 {total}개 중 {buySide}개가 매수 쪽
         </p>
         <p className="text-xs text-muted">
           {formatDate(data.as_of.slice(0, 10))} 확정 봉 기준
-          {data.price ? ` · 현재가 ${formatWon(Number(data.price))}` : " · 현재가를 못 받아 돌파 여부 제외"}
+          {data.price
+            ? ` · 현재가 ${formatPrice(Number(data.price), info.currency)}`
+            : info.group === "coin"
+              ? " · 현재가를 못 받아 돌파 여부 제외"
+              : ""}
         </p>
       </div>
 
       <ul className="divide-y divide-border">
         {data.signals.map((s) => (
-          <SignalRow key={s.strategy} signal={s} />
+          <SignalRow key={s.strategy} signal={s} currency={info.currency} />
         ))}
       </ul>
 
@@ -43,10 +48,10 @@ export function SignalCard({ name, data }: { name: string; data: Signals }) {
   );
 }
 
-function SignalRow({ signal }: { signal: Signal }) {
+function SignalRow({ signal, currency }: { signal: Signal; currency: Currency }) {
   const stance = STANCE[signal.stance];
   const detail = signal.trigger
-    ? `기준선 ${formatWon(Number(signal.trigger))}`
+    ? `기준선 ${formatPrice(Number(signal.trigger), currency)}`
     : signal.days
       ? `${signal.days}일째`
       : null;

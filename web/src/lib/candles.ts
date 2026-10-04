@@ -5,7 +5,7 @@ export type Interval = components["schemas"]["Interval"];
 
 // 화면 표시·차트 전용 — 금액 계산·주문에는 쓰지 않음 (float 오차)
 export type ChartCandle = {
-  day: string; // YYYY-MM-DD, 업비트 일봉 기준일 (UTC)
+  day: string; // YYYY-MM-DD, 거래일 (UTC 날짜 키)
   open: number;
   high: number;
   low: number;

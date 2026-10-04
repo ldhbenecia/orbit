@@ -10,12 +10,13 @@ import {
 import { useEffect, useRef } from "react";
 
 import type { ChartCandle } from "@/lib/candles";
-import { formatCompactWonTicks, formatDate, formatWon } from "@/lib/format";
+import { type Currency, formatDate, formatPrice, formatPriceTicks } from "@/lib/format";
 import { TradeBadges } from "@/lib/trade-badges";
 
 export type ChartMarker = { day: string; side: "buy" | "sell"; count: number }; // day 는 막대 시작일
 
 type Props = {
+  currency: Currency;
   candles: ChartCandle[];
   markers: ChartMarker[];
   initialBars: number | null; // 처음 보여줄 최근 막대 수, null 이면 전체
@@ -36,6 +37,7 @@ const formatTime = (time: Time) => {
 };
 
 export function CandleChart({
+  currency,
   candles,
   markers,
   initialBars,
@@ -68,8 +70,6 @@ export function CandleChart({
       timeScale: { borderVisible: false },
       localization: {
         locale: "ko-KR",
-        priceFormatter: formatWon,
-        tickmarksPriceFormatter: formatCompactWonTicks,
         timeFormatter: formatTime,
       },
       handleScale: { mouseWheel: false },
@@ -134,6 +134,15 @@ export function CandleChart({
       badgesRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    chartRef.current?.applyOptions({
+      localization: {
+        priceFormatter: (value: number) => formatPrice(value, currency),
+        tickmarksPriceFormatter: formatPriceTicks(currency),
+      },
+    });
+  }, [currency]);
 
   // 막대 단위가 바뀌면 데이터와 처음 보이는 구간을 같이 다시 잡음
   useEffect(() => {
