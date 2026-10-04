@@ -19,9 +19,11 @@ export type Badge = {
 type Colors = { buy: string; sell: string; text: string; font: string };
 type Target = Parameters<IPrimitivePaneRenderer["draw"]>[0];
 
-const MAX_RADIUS = 8;
-const MIN_LETTER_RADIUS = 5.5; // 이보다 작으면 글자가 안 읽혀 점으로
-const GAP = 4; // 막대 끝과 배지 사이
+// 토스증권처럼 확대·축소와 무관하게 같은 크기 — 막대 간격에 맞추면 기본 화면에서 글자가 안 들어감
+const SIZE = 16; // 배지 높이·최소 너비
+const CORNER = 4;
+const TAIL = 4; // 막대 쪽을 가리키는 꼬리 높이
+const GAP = 2; // 막대 끝과 꼬리 사이
 
 // 토스증권 "구매·판매 표시" 처럼 동그란 배지 안에 B·S — 기본 마커는 글자를 도형 밖에 그려 촘촘하면 겹침
 export class TradeBadges implements ISeriesPrimitive<Time> {
@@ -64,10 +66,9 @@ export class TradeBadges implements ISeriesPrimitive<Time> {
     const series = this.series;
     if (!chart || !series || this.badges.length === 0) return;
     const timeScale = chart.timeScale();
-    const radius = Math.min(MAX_RADIUS, timeScale.options().barSpacing * 0.45);
 
     target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
-      ctx.font = `700 ${Math.round(radius * 1.25)}px ${this.colors.font}`;
+      ctx.font = `700 11px ${this.colors.font}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       for (const b of this.badges) {
@@ -79,31 +80,28 @@ export class TradeBadges implements ISeriesPrimitive<Time> {
         if (
           x === null ||
           edge === null ||
-          x < -MAX_RADIUS * 3 ||
-          x > mediaSize.width + MAX_RADIUS * 3
+          x < -SIZE ||
+          x > mediaSize.width + SIZE
         )
           continue;
-        const y = b.side === "buy" ? edge + GAP + radius : edge - GAP - radius;
-        const label = `${b.side === "buy" ? "B" : "S"}${b.count > 1 ? b.count : ""}`;
-        const letters = radius >= MIN_LETTER_RADIUS;
-        const half = letters
-          ? Math.max(radius, ctx.measureText(label).width / 2 + radius * 0.5)
-          : radius * 0.6;
 
-        ctx.fillStyle = b.side === "buy" ? this.colors.buy : this.colors.sell;
+        const label = `${b.side === "buy" ? "B" : "S"}${b.count > 1 ? b.count : ""}`;
+        const width = Math.max(SIZE, ctx.measureText(label).width + 8);
+        const down = b.side === "buy"; // 매수는 막대 아래로, 매도는 위로
+        const tip = down ? edge + GAP : edge - GAP; // 꼬리 끝
+        const boxTop = down ? tip + TAIL : tip - TAIL - SIZE;
+
+        ctx.fillStyle = down ? this.colors.buy : this.colors.sell;
         ctx.beginPath();
-        ctx.roundRect(
-          x - half,
-          y - (letters ? radius : half),
-          half * 2,
-          (letters ? radius : half) * 2,
-          radius,
-        );
+        ctx.roundRect(x - width / 2, boxTop, width, SIZE, CORNER);
+        ctx.moveTo(x - TAIL, down ? boxTop : boxTop + SIZE);
+        ctx.lineTo(x, tip);
+        ctx.lineTo(x + TAIL, down ? boxTop : boxTop + SIZE);
+        ctx.closePath();
         ctx.fill();
-        if (letters) {
-          ctx.fillStyle = this.colors.text;
-          ctx.fillText(label, x, y + 0.5);
-        }
+
+        ctx.fillStyle = this.colors.text;
+        ctx.fillText(label, x, boxTop + SIZE / 2 + 0.5);
       }
     });
   }
