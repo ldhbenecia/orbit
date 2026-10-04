@@ -170,6 +170,21 @@ def _print_table(results: dict[str, Metrics]) -> None:
     log.info("%-16s" + " %18s" * len(names), "", *names)
     for label, value in _ROWS:
         log.info("%-16s" + " %18s" * len(names), label, *(value(results[n]) for n in names))
+    log.info("")
+    for line in _GLOSSARY:
+        log.info(line)
+
+
+# 표 아래에 붙이는 용어 풀이 — 자세한 설명은 docs/knowledge/glossary.md
+_GLOSSARY = [
+    "용어",
+    "  CAGR          1년에 평균 몇 %씩 불었나 (복리). 기간이 다른 결과끼리 비교할 때 씀",
+    "  MDD           가장 비쌀 때 대비 가장 많이 떨어졌던 비율. 최악의 순간에 얼마나 아팠나",
+    "  원금 대비 최악 넣은 돈 대비 평가액이 가장 나빴던 순간",
+    "  최장 손실 기간 이전 고점을 회복하기까지 가장 오래 걸린 날 수",
+    "  (기준가)      중간 입금 효과를 뺀 전략 자체의 성과",
+    "  과거 데이터로 돌린 결과이며 앞으로도 같다는 뜻이 아님",
+]
 
 
 def _code_version() -> str:
