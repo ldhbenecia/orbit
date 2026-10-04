@@ -22,6 +22,8 @@ class Decision:
     reference: Decimal | None = (
         None  # 판단 기준 가격 (이동평균 등) — 화면이 현재가와의 차이를 보여줌
     )
+    # 판단 재료가 모자라 규칙을 적용하지 못함 — 백테스트는 현금으로 두지만 신호 화면은 "현금"과 구분
+    enough_data: bool = True
 
 
 # 확정된 봉만 받음 — 마지막 원소가 판단 시점의 가장 최근 확정 봉

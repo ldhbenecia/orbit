@@ -30,6 +30,14 @@ def test_이동평균_아래면_현금_구간() -> None:
     assert signal.stance is Stance.CASH
 
 
+def test_일봉이_모자라면_현금_구간이_아니라_데이터_부족() -> None:
+    # 상장한 지 얼마 안 된 종목 — 판단을 못 하는 것과 사지 말라는 것은 다름
+    signal = today_signal("ma-3", candles([(10, 10), (20, 20)]), None)
+
+    assert signal.stance is Stance.NOT_ENOUGH
+    assert signal.days is None
+
+
 def test_변동성_돌파_기준선은_오늘_시가에_전날_변동폭_k배를_더함() -> None:
     history = candles([(100, 100), (100, 120)])  # 마지막 봉 고가 120 · 저가 100 → 변동폭 20
     today = history[-1].start + timedelta(days=1)

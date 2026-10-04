@@ -263,7 +263,7 @@ export interface components {
          * Stance
          * @enum {string}
          */
-        Stance: "hold" | "cash" | "breakout_wait" | "breakout_hit";
+        Stance: "hold" | "cash" | "breakout_wait" | "breakout_hit" | "not_enough";
         /** TradeOut */
         TradeOut: {
             /**

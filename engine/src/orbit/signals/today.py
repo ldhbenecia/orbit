@@ -20,6 +20,7 @@ class Stance(StrEnum):
     CASH = "cash"  # 규칙상 현금 구간
     BREAKOUT_WAIT = "breakout_wait"  # 기준선에 닿으면 매수
     BREAKOUT_HIT = "breakout_hit"  # 오늘 기준선에 닿음
+    NOT_ENOUGH = "not_enough"  # 일봉이 모자라 판단 못 함 (상장 직후 등)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +50,8 @@ def today_signal(spec: str, candles: Sequence[Candle], ticker: Ticker | None) ->
         stance = Stance.BREAKOUT_HIT if ticker.high >= trigger else Stance.BREAKOUT_WAIT
         return Signal(spec, status, stance, entry.reason, None, trigger, close, None)
 
+    if not decision.enough_data:
+        return Signal(spec, status, Stance.NOT_ENOUGH, decision.reason, None, None, close, None)
     stance = Stance.HOLD if decision.target_weight > 0 else Stance.CASH
     days = _streak(strategy, candles, decision.target_weight)
     return Signal(spec, status, stance, decision.reason, days, None, close, decision.reference)

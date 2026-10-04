@@ -24,6 +24,7 @@ export const MARKETS: readonly MarketInfo[] = [
   { market: "US-SPY", name: "SPY", group: "stock", currency: "USD", source: "토스증권 (수정주가)" },
   { market: "KRX-367380", name: "ACE 미국나스닥100", group: "stock", currency: "KRW", source: "토스증권 (수정주가)", core: true },
   { market: "KRX-360750", name: "TIGER 미국S&P500", group: "stock", currency: "KRW", source: "토스증권 (수정주가)", core: true },
+  { market: "KRX-0183J0", name: "TIGER 미국우주테크", group: "stock", currency: "KRW", source: "토스증권 (수정주가)" },
 ];
 
 export const findMarket = (value: string | string[] | undefined): MarketInfo =>

@@ -19,6 +19,7 @@ STOCK_INSTRUMENTS = (
     Instrument("US-SPY", "SPY", "SPY", NEW_YORK),
     Instrument("KRX-367380", "367380", "ACE 미국나스닥100", SEOUL),
     Instrument("KRX-360750", "360750", "TIGER 미국S&P500", SEOUL),
+    Instrument("KRX-0183J0", "0183J0", "TIGER 미국우주테크", SEOUL),
 )
 
 

@@ -12,7 +12,9 @@ def make_ma_filter(window: int) -> Strategy:
         closes = [c.close for c in candles[-window:]]
         average = sma(closes, window)
         if average is None:
-            return Decision(Decimal(0), f"최근 {window}일 평균을 계산하기엔 일봉 부족")
+            return Decision(
+                Decimal(0), f"최근 {window}일 평균을 계산하기엔 일봉 부족", enough_data=False
+            )
         close = closes[-1]
         market = candles[-1].market
         # 주식은 주말·휴장일이 빠져 N 개 봉이 N 거래일 — 코인은 그냥 N 일
