@@ -5,6 +5,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -20,7 +21,7 @@ from orbit.backtest.compare import compare_lump_vs_dca, select_period
 from orbit.backtest.engine import DEFAULT_CONFIG, Funding, run_backtest
 from orbit.backtest.metrics import Metrics, compute_metrics
 from orbit.backtest.runs import RunSpec, save_run
-from orbit.estimate.live import NextOpenView, build_view
+from orbit.estimate.live import NEXT_OPEN_BASKETS, NextOpenView, build_view
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.instruments import SEOUL, STOCK_INSTRUMENTS
 from orbit.marketdata.store import CandleStore
@@ -98,6 +99,8 @@ def main() -> None:
             get_ticker=try_fetch_ticker,
             kr_trading_day_for=_kr_calendar(toss) if toss else None,
             next_open=_next_open(toss) if toss else None,
+            # 첫 화면부터 빠르게 — 전 종목 일봉을 서버가 뜰 때 읽어 둠
+            warm_markets=("KRW-BTC", "KRW-ETH", *(i.market for i in STOCK_INSTRUMENTS)),
         )
         uvicorn.run(app, host="127.0.0.1", port=args.port)
     elif args.command == "backtest":
@@ -338,6 +341,7 @@ def _kr_calendar(api: TossMarketData) -> Callable[[date], date]:
 
 # 토스 호출이 종목당 10번 넘게 일어남 — 시세 갱신 주기(1분)만큼만 재사용
 NEXT_OPEN_TTL = timedelta(minutes=1)
+NEXT_OPEN_STALE = timedelta(minutes=5)  # 이보다 오래된 미리 계산 값은 쓰지 않음
 
 
 class _SharedGets:
@@ -375,14 +379,33 @@ def _next_open(api: TossMarketData) -> Callable[[str], NextOpenView]:
             holdings[key] = fetch_holdings(tiger, fund)
         return holdings[key]
 
-    def view_for(market: str) -> NextOpenView:
-        now = datetime.now(UTC)
-        # 동시에 들어온 요청이 토스를 중복 호출하지 않게 한 번에 하나만 계산
+    def refresh(market: str) -> NextOpenView:
+        # 같은 종목을 백그라운드와 요청이 동시에 계산해 토스를 중복 호출하지 않게
         with lock:
+            now = datetime.now(UTC)
             cached = views.get(market)
             if cached is None or now - cached[0] >= NEXT_OPEN_TTL:
                 cached = (now, build_view(market, source, holdings_for, now))
                 views[market] = cached
             return cached[1]
+
+    def keep_fresh() -> None:
+        # 요청이 토스 호출(1~2초)을 기다리지 않게 미리 계산해 둠
+        while True:
+            for market in NEXT_OPEN_BASKETS:
+                try:
+                    refresh(market)
+                except httpx.HTTPError as error:
+                    log.warning("다음 개장 미리 계산 실패 %s: %s", market, type(error).__name__)
+            time.sleep(NEXT_OPEN_TTL.total_seconds())
+
+    threading.Thread(target=keep_fresh, name="next-open", daemon=True).start()
+
+    def view_for(market: str) -> NextOpenView:
+        # 백그라운드가 막혔으면(토스 오류 등) 오래된 값 대신 요청에서 다시 계산
+        cached = views.get(market)
+        if cached is not None and datetime.now(UTC) - cached[0] < NEXT_OPEN_STALE:
+            return cached[1]
+        return refresh(market)
 
     return view_for

@@ -1,6 +1,8 @@
 import logging
 import sqlite3
-from collections.abc import Callable
+import threading
+from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
@@ -145,9 +147,8 @@ def create_app(
     kr_trading_day_for: Callable[[date], date] | None = None,
     today: Callable[[], date] = lambda: datetime.now(SEOUL).date(),
     next_open: Callable[[str], NextOpenView] | None = None,
+    warm_markets: Sequence[str] = (),
 ) -> FastAPI:
-    app = FastAPI(title="orbit", docs_url=None, redoc_url=None)
-
     # 전 기간 일봉을 Decimal 로 바꾸는 게 요청 비용 대부분 — DB 가 그대로면 읽어 둔 걸 씀
     cache: dict[str, tuple[tuple[int, int | None], list[Candle]]] = {}
 
@@ -165,6 +166,16 @@ def create_app(
             return list(cached[1])
         finally:
             conn.close()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        # 서버가 요청을 받기 시작한 뒤 백그라운드에서 — 첫 요청이 전 기간 일봉 변환을 기다리지 않게
+        threading.Thread(
+            target=lambda: [load_candles(m) for m in warm_markets], name="warm", daemon=True
+        ).start()
+        yield
+
+    app = FastAPI(title="orbit", docs_url=None, redoc_url=None, lifespan=lifespan)
 
     @app.get("/candles")
     def candles(
