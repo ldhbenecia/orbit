@@ -75,7 +75,7 @@ def main() -> None:
     elif args.command == "serve":
         db = args.db
         # 외부 접속을 막기 위해 루프백에만 바인딩
-        app = create_app(lambda: CandleStore.open(db), get_ticker=try_fetch_ticker)
+        app = create_app(lambda: sqlite3.connect(db), get_ticker=try_fetch_ticker)
         uvicorn.run(app, host="127.0.0.1", port=args.port)
     elif args.command == "backtest":
         _backtest(args.market, args.start, args.end, args.monthly, args.db)
@@ -85,7 +85,7 @@ def main() -> None:
         _signal(args.market, args.db)
     elif args.command == "openapi":
         json.dump(
-            create_app(lambda: CandleStore.open(DEFAULT_DB)).openapi(),
+            create_app(lambda: sqlite3.connect(DEFAULT_DB)).openapi(),
             sys.stdout,
             ensure_ascii=False,
             indent=2,
