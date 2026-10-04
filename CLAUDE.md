@@ -103,6 +103,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 - [docs/knowledge/strategies.md](docs/knowledge/strategies.md) — 알려진 투자 규칙·전략 카탈로그 (근거 수준·구현 난이도)
 - [docs/knowledge/risk-management.md](docs/knowledge/risk-management.md) — 자금·리스크 관리 규칙
 - [docs/knowledge/backtest-pitfalls.md](docs/knowledge/backtest-pitfalls.md) — 백테스트 함정
+- [docs/knowledge/upbit-krw-market.md](docs/knowledge/upbit-krw-market.md) — 업비트 수수료·최소 주문·호가 단위 (공식 출처·확인일)
 - [docs/knowledge/glossary.md](docs/knowledge/glossary.md) — 용어집
 - [docs/knowledge/learning-path.md](docs/knowledge/learning-path.md) — 만들면서 배우는 단계별 학습 경로
 
