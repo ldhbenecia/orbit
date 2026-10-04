@@ -84,6 +84,13 @@ class CandleStore:
             for start_ts, open_, high, low, close, volume in rows
         ]
 
+    def version(self, market: str) -> tuple[int, int | None]:
+        # 봉 추가는 개수, 같은 봉 재수집은 받은 시각으로 바뀜 — 읽은 일봉을 다시 써도 되는지 판단용
+        count, fetched = self._conn.execute(
+            "SELECT COUNT(*), MAX(fetched_ts) FROM daily_candles WHERE market = ?", (market,)
+        ).fetchone()
+        return count, fetched
+
     def latest_start(self, market: str) -> datetime | None:
         (ts,) = self._conn.execute(
             "SELECT MAX(start_ts) FROM daily_candles WHERE market = ?", (market,)

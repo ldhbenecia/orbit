@@ -1,21 +1,13 @@
 import type { components } from "@/lib/api";
 import { formatDate, formatKoreanWon, formatPercent1, formatWon } from "@/lib/format";
 import type { MarketInfo } from "@/lib/markets";
+import { NEAR, position, tone } from "@/lib/summary";
 
 type Dca = components["schemas"]["DcaOut"];
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 const withWeekday = (day: string) => `${formatDate(day)} (${WEEKDAYS[new Date(`${day}T00:00:00Z`).getUTCDay()]})`;
-
-// 기호(+/−) 대신 말로 — 적립하는 입장에서는 평균보다 싸게 사는지가 관심사
-const NEAR = 0.005; // 0.5% 안쪽은 평균과 같다고 봄 — 색으로 강조하지 않음
-const position = (gap: number) => {
-  if (Math.abs(gap) < NEAR) return "평균과 거의 같음";
-  return `평균보다 ${Math.abs(gap * 100).toFixed(1)}% ${gap > 0 ? "비쌈" : "쌈"}`;
-};
-
-const tone = (value: number) => (value > 0 ? "text-up" : value < 0 ? "text-down" : "text-muted");
 
 // 코어 ETF 는 다른 계좌에서 매달 25일(휴일이면 직전 영업일) 적립 — 보유/현금이 아니라 적립 관점으로 보여줌
 export function DcaCard({ info, data }: { info: MarketInfo; data: Dca }) {
