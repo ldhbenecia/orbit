@@ -1,6 +1,8 @@
 import argparse
 import json
 import logging
+import sqlite3
+import subprocess
 import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -12,10 +14,13 @@ import uvicorn
 
 from orbit.api.app import create_app
 from orbit.backtest.compare import compare_lump_vs_dca, select_period
-from orbit.backtest.metrics import Metrics
+from orbit.backtest.engine import DEFAULT_CONFIG, Funding, run_backtest
+from orbit.backtest.metrics import Metrics, compute_metrics
+from orbit.backtest.runs import RunSpec, save_run
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.sync import sync_daily_candles
 from orbit.marketdata.upbit_candles import BASE_URL
+from orbit.strategies.registry import build_strategy
 
 log = logging.getLogger("orbit")
 
@@ -47,6 +52,17 @@ def main() -> None:
     backtest.add_argument("--monthly", type=Decimal, default=Decimal(1_000_000))
     backtest.add_argument("--db", type=Path, default=DEFAULT_DB)
 
+    strategies = commands.add_parser(
+        "compare-strategies", help="여러 전략을 같은 조건으로 백테스트하고 결과를 기록"
+    )
+    strategies.add_argument("--market", default="KRW-BTC")
+    strategies.add_argument("--strategies", default="hold,ma-60,ma-120,ma-200,vb-0.5")
+    strategies.add_argument("--start", type=_utc_date, default=_utc_date("2018-01-01"))
+    strategies.add_argument("--end", type=_utc_date, default=datetime.max.replace(tzinfo=UTC))
+    strategies.add_argument("--initial", type=Decimal, default=Decimal(10_000_000))
+    strategies.add_argument("--monthly", type=Decimal, default=Decimal(0))
+    strategies.add_argument("--db", type=Path, default=DEFAULT_DB)
+
     args = parser.parse_args()
     if args.command == "sync-candles":
         _sync_candles(args.market, args.db)
@@ -56,6 +72,8 @@ def main() -> None:
         uvicorn.run(create_app(lambda: CandleStore.open(db)), host="127.0.0.1", port=args.port)
     elif args.command == "backtest":
         _backtest(args.market, args.start, args.end, args.monthly, args.db)
+    elif args.command == "compare-strategies":
+        _compare_strategies(args)
     elif args.command == "openapi":
         json.dump(
             create_app(lambda: CandleStore.open(DEFAULT_DB)).openapi(),
@@ -100,10 +118,88 @@ def _backtest(market: str, start: datetime, end: datetime, monthly: Decimal, db:
         f"{candles[-1].start:%Y-%m-%d}",
         f"{monthly:,.0f}",
     )
+    _print_table(results)
+
+
+def _compare_strategies(args: argparse.Namespace) -> None:
+    specs = [s.strip() for s in args.strategies.split(",") if s.strip()]
+    built = {spec: build_strategy(spec) for spec in specs}
+    store = CandleStore.open(args.db)
+    candles = select_period(store.load(args.market), args.start, args.end)
+    store.close()
+    if len(candles) < 2:
+        log.error("기간 안에 일봉이 없음 — 먼저 orbit sync-candles 실행")
+        return
+
+    funding = Funding(initial=args.initial, monthly=args.monthly)
+    version = _code_version()
+    now = datetime.now(UTC)
+    results: dict[str, Metrics] = {}
+    conn = sqlite3.connect(args.db)
+    for spec, (strategy, params) in built.items():
+        result = run_backtest(candles, strategy, funding, DEFAULT_CONFIG)
+        results[spec] = compute_metrics(result)
+        run_spec = RunSpec(
+            market=args.market,
+            strategy=spec,
+            params=params,
+            start=candles[1].start,
+            end=candles[-1].start,
+            funding=funding,
+            config=DEFAULT_CONFIG,
+            code_version=version,
+        )
+        save_run(conn, run_spec, results[spec], result.trades, now)
+    conn.close()
+
+    log.info(
+        "%s %s ~ %s, 처음 %s원 + 매달 %s원 (수수료·슬리피지·호가 단위 반영, 코드 %s)\n",
+        args.market,
+        f"{candles[1].start:%Y-%m-%d}",
+        f"{candles[-1].start:%Y-%m-%d}",
+        f"{args.initial:,.0f}",
+        f"{args.monthly:,.0f}",
+        version,
+    )
+    _print_table(results)
+    log.info("\n%d개 실행을 기록함", len(results))
+
+
+def _print_table(results: dict[str, Metrics]) -> None:
     names = list(results)
-    log.info("%-18s %20s %20s", "", *names)
+    log.info("%-16s" + " %18s" * len(names), "", *names)
     for label, value in _ROWS:
-        log.info("%-18s %20s %20s", label, *(value(results[n]) for n in names))
+        log.info("%-16s" + " %18s" * len(names), label, *(value(results[n]) for n in names))
+    log.info("")
+    for line in _GLOSSARY:
+        log.info(line)
+
+
+# 표 아래에 붙이는 용어 풀이 — 자세한 설명은 docs/knowledge/glossary.md
+_GLOSSARY = [
+    "용어",
+    "  CAGR          1년에 평균 몇 %씩 불었나 (복리). 기간이 다른 결과끼리 비교할 때 씀",
+    "  MDD           가장 비쌀 때 대비 가장 많이 떨어졌던 비율. 최악의 순간에 얼마나 아팠나",
+    "  원금 대비 최악 넣은 돈 대비 평가액이 가장 나빴던 순간",
+    "  최장 손실 기간 이전 고점을 회복하기까지 가장 오래 걸린 날 수",
+    "  (기준가)      중간 입금 효과를 뺀 전략 자체의 성과",
+    "  과거 데이터로 돌린 결과이며 앞으로도 같다는 뜻이 아님",
+]
+
+
+def _code_version() -> str:
+    # 결과를 재현하려면 어떤 코드로 돌렸는지 알아야 함 — 커밋 안 된 변경이 있으면 -dirty
+    try:
+        out = subprocess.run(
+            ["git", "describe", "--always", "--dirty"],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+    return out.stdout.strip()
 
 
 def _won(v: Decimal) -> str:
@@ -119,7 +215,7 @@ _ROWS: list[tuple[str, Callable[[Metrics], str]]] = [
     ("최종 평가액", lambda m: _won(m.final_equity)),
     ("손익", lambda m: _won(m.profit)),
     ("투입 대비 수익률", lambda m: _pct(m.return_on_invested)),
-    ("원금 대비 최악", lambda m: _pct(m.worst_vs_invested)),
+    ("원금 대비 최악", lambda m: _pct(m.worst_vs_invested) if m.worst_vs_invested else "손실 없음"),
     ("CAGR (기준가)", lambda m: _pct(m.cagr)),
     ("MDD (기준가)", lambda m: _pct(m.mdd)),
     ("최장 손실 기간", lambda m: f"{m.longest_underwater_days:,}일"),

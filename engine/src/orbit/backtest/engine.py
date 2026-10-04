@@ -80,8 +80,17 @@ def run_backtest(
             cash += deposit
             invested += deposit
 
-        trade = _rebalance(today, cash, qty, decision.target_weight, decision.reason, config)
-        if trade is not None:
+        orders = [(today.open, decision.target_weight, decision.reason)]
+        entry = decision.entry
+        if entry is not None:
+            trigger = today.open + entry.breakout
+            # 고가가 기준선에 닿은 날만 체결 — 닿은 시각은 모르므로 기준선 가격 체결로 가정
+            if today.high >= trigger:
+                orders.append((trigger, entry.weight, entry.reason))
+        for price, weight, reason in orders:
+            trade = _rebalance(today.start, price, cash, qty, weight, reason, config)
+            if trade is None:
+                continue
             result.trades.append(trade)
             if trade.side == "buy":
                 cash -= trade.qty * trade.price + trade.fee
@@ -115,14 +124,14 @@ def _deposit(funding: Funding, candles: Sequence[Candle], i: int) -> Decimal:
 
 
 def _rebalance(
-    today: Candle,
+    day: datetime,
+    price: Decimal,
     cash: Decimal,
     qty: Decimal,
     target_weight: Decimal,
     reason: str,
     config: BacktestConfig,
 ) -> Trade | None:
-    price = today.open
     equity = cash + qty * price
     diff = target_weight * equity - qty * price
     if abs(diff) < config.min_order:
@@ -136,7 +145,7 @@ def _rebalance(
         if buy_qty * exec_price < config.min_order:
             return None
         return Trade(
-            day=today.start,
+            day=day,
             side="buy",
             qty=buy_qty,
             price=exec_price,
@@ -150,7 +159,7 @@ def _rebalance(
     if sell_qty * exec_price < config.min_order:
         return None
     return Trade(
-        day=today.start,
+        day=day,
         side="sell",
         qty=sell_qty,
         price=exec_price,
