@@ -28,6 +28,7 @@ orbit 은 GitHub public 레포다. 커밋된 것은 지워도 이력·포크·�
 - 테스트 픽스처는 가짜 계좌·가짜 금액만. 실제 API 응답을 녹화해 쓸 때는 식별자·금액을 치환한 뒤 커밋
 - Jupyter 노트북은 출력 셀을 지우고 커밋 (잔고·체결이 출력에 남음)
 - 커밋 전 gitleaks 검사. GitHub secret scanning + push protection 켜둠
+- 토스증권 키는 조회 전용이 없어 **주문까지 가능한 키**로 취급 — `.env` 에만, 엔진은 조회 경로 화이트리스트만 호출
 - Claude 는 `.env`, `config/*.local.yaml`, `data/` 를 읽지 않는다 (`.claude/settings.json` deny). 값이 필요하면 사용자에게 키 이름만 묻는다
 
 ## 사고 시

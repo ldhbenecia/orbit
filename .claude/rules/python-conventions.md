@@ -27,7 +27,7 @@ engine/
 └─ tests/
 ```
 
-- 의존 방향: `strategies` → `indicators` 만. `strategies` 는 `brokers`·`ledger`·`api` 를 import 하지 않는다
+- 의존 방향: `strategies` → `indicators`, `marketdata` 의 캔들 모델·가격 표기만. `strategies` 는 `brokers`·`ledger`·`api` 를 import 하지 않는다
 - 브로커는 `typing.Protocol` 로 정의, 실거래 어댑터와 `MockBroker` 가 같은 프로토콜을 구현
 - 경계 데이터(API 응답, 설정, 대시보드 응답)는 pydantic 모델. 금액 필드는 `Decimal`
 - 설정은 pydantic-settings 로 로드, 누락·검증 실패 시 dry-run 으로 떨어진다
