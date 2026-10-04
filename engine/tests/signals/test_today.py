@@ -20,7 +20,8 @@ def test_이동평균_위면_보유_구간과_며칠째인지() -> None:
 
     assert signal.stance is Stance.HOLD
     assert signal.days == 3
-    assert "선 위라서 보유" in signal.reason
+    assert "평균보다 높아서 보유" in signal.reason
+    assert signal.reference == Decimal(30)  # 최근 3일 평균 (20+30+40)/3
 
 
 def test_이동평균_아래면_현금_구간() -> None:

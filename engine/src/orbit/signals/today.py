@@ -30,25 +30,28 @@ class Signal:
     reason: str
     days: int | None  # 오늘 포함 같은 판단이 이어진 일수, 돌파형은 매일 새로 판단해 없음
     trigger: Decimal | None  # 돌파 기준선 가격 — 오늘 시가를 모르면 없음
+    close: Decimal  # 판단에 쓴 마지막 확정 봉 종가
+    reference: Decimal | None  # 판단 기준 가격 (이동평균 등)
 
 
 def today_signal(spec: str, candles: Sequence[Candle], ticker: Ticker | None) -> Signal:
     strategy, _ = build_strategy(spec)
     status = strategy_status(spec)
     decision = strategy(candles)
+    close = candles[-1].close
     entry = decision.entry
     if entry is not None:
         # 시세가 마지막 확정 봉 바로 다음 날 것이 아니면 기준선이 틀어짐 — 계산하지 않음
         if ticker is None or ticker.day != candles[-1].start + ONE_DAY:
-            return Signal(spec, status, Stance.BREAKOUT_WAIT, entry.reason, None, None)
+            return Signal(spec, status, Stance.BREAKOUT_WAIT, entry.reason, None, None, close, None)
         # 실제로 걸 수 있는 지정가 — 백테스트 체결처럼 매수 쪽(올림)으로 호가에 맞춤
         trigger = round_to_tick(ticker.open + entry.breakout, up=True)
         stance = Stance.BREAKOUT_HIT if ticker.high >= trigger else Stance.BREAKOUT_WAIT
-        return Signal(spec, status, stance, entry.reason, None, trigger)
+        return Signal(spec, status, stance, entry.reason, None, trigger, close, None)
 
     stance = Stance.HOLD if decision.target_weight > 0 else Stance.CASH
     days = _streak(strategy, candles, decision.target_weight)
-    return Signal(spec, status, stance, decision.reason, days, None)
+    return Signal(spec, status, stance, decision.reason, days, None, close, decision.reference)
 
 
 def signal_strategies(market: str) -> tuple[str, ...]:
