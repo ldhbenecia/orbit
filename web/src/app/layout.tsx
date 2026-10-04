@@ -4,6 +4,7 @@ import { connection } from "next/server";
 
 import { Logo } from "@/components/logo";
 import { MarketSwitcher } from "@/components/market-switcher";
+import { DEMO } from "@/lib/markets";
 import { allTiles } from "@/lib/overview";
 
 import "./globals.css";
@@ -31,6 +32,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <header className="mb-6 flex items-center gap-2">
             <Logo className="size-7" />
             <span className="text-lg font-bold tracking-tight">orbit</span>
+            {DEMO && (
+              <span className="ml-1 rounded-md bg-subtle px-2 py-0.5 text-xs font-medium text-muted">
+                가상 데이터 — 실제 시세 아님
+              </span>
+            )}
           </header>
           <MarketSwitcher tiles={tiles}>{children}</MarketSwitcher>
         </main>
