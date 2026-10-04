@@ -48,6 +48,11 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * Interval
+         * @enum {string}
+         */
+        Interval: "day" | "week" | "month";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -74,6 +79,7 @@ export interface operations {
         parameters: {
             query?: {
                 market?: string;
+                interval?: components["schemas"]["Interval"];
             };
             header?: never;
             path?: never;

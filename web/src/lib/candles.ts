@@ -1,6 +1,7 @@
 import type { components } from "@/lib/api";
 
 export type CandleOut = components["schemas"]["CandleOut"];
+export type Interval = components["schemas"]["Interval"];
 
 // 화면 표시·차트 전용 — 금액 계산·주문에는 쓰지 않음 (float 오차)
 export type ChartCandle = {

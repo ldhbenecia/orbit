@@ -1,23 +1,31 @@
 import { connection } from "next/server";
 
 import { PriceView } from "@/components/price-view";
-import { type CandleOut, toChartCandle } from "@/lib/candles";
+import { type CandleOut, type Interval, toChartCandle } from "@/lib/candles";
 
 const API_URL = process.env.ORBIT_API_URL ?? "http://127.0.0.1:8000";
 const MARKET = "KRW-BTC";
 
-async function loadCandles(): Promise<CandleOut[] | null> {
+async function loadCandles(interval: Interval): Promise<CandleOut[] | null> {
   try {
-    const res = await fetch(`${API_URL}/candles?market=${MARKET}`);
-    return res.ok ? ((await res.json()) as CandleOut[]) : null;
-  } catch {
+    const res = await fetch(`${API_URL}/candles?market=${MARKET}&interval=${interval}`);
+    if (!res.ok) {
+      console.error(`엔진 API ${interval} 응답 ${res.status}`);
+      return null;
+    }
+    return (await res.json()) as CandleOut[];
+  } catch (error) {
+    console.error(`엔진 API ${interval} 요청 실패`, error);
     return null;
   }
 }
 
 export default async function Page() {
   await connection();
-  const candles = await loadCandles();
+  const [day, week, month] = await Promise.all(
+    (["day", "week", "month"] as const).map(loadCandles),
+  );
+  const candles = day && week && month ? day : null;
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-8 sm:py-12">
@@ -26,7 +34,15 @@ export default async function Page() {
       ) : candles.length < 2 ? (
         <Notice title="아직 받은 일봉이 없어요" command="uv run --project engine orbit sync-candles" />
       ) : (
-        <PriceView market={MARKET} candles={candles.map(toChartCandle)} />
+        <PriceView
+          market={MARKET}
+          daily={candles.map(toChartCandle)}
+          byInterval={{
+            day: candles.map(toChartCandle),
+            week: week!.map(toChartCandle),
+            month: month!.map(toChartCandle),
+          }}
+        />
       )}
     </main>
   );
