@@ -105,9 +105,11 @@ function verdict(specs: string[], name: string, get: Get, holdFirst: number, hol
   if (both === specs.length) return `${name}은 어떤 값이든 두 기간 모두 단순 보유보다 나았어요`;
   if (both === 0) {
     const firstOnly = specs.filter((s) => Number(get(s, "first")?.cagr) > holdFirst).length;
-    return firstOnly > 0
-      ? `${name}은 앞 절반에서만 나았고 뒤 절반에선 단순 보유보다 못했어요`
-      : `${name}은 두 기간 모두 단순 보유보다 못했어요`;
+    const secondOnly = specs.filter((s) => Number(get(s, "second")?.cagr) > holdSecond).length;
+    if (firstOnly > 0 && secondOnly === 0) return `${name}은 앞 절반에서만 나았고 뒤 절반에선 단순 보유보다 못했어요`;
+    if (secondOnly > 0 && firstOnly === 0) return `${name}은 뒤 절반에서만 나았고 앞 절반에선 단순 보유보다 못했어요`;
+    if (firstOnly > 0) return `${name}은 한쪽 기간에서만 나았고, 두 기간 모두 단순 보유보다 나은 값은 없었어요`;
+    return `${name}은 두 기간 모두 단순 보유보다 못했어요`;
   }
   return `${name}은 ${specs.length}개 값 중 ${both}개만 두 기간 모두 단순 보유보다 나았어요`;
 }
