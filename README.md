@@ -52,20 +52,11 @@ cp .env.example .env   # 토스증권 Open API 키 (미국주식·국내 ETF 시
 ```
 
 ```bash
-cd engine && uv sync && uv run orbit sync-candles --market KRW-BTC && uv run orbit sync-candles --market KRW-ETH
+./scripts/dashboard.sh            # 시세 갱신 → 엔진 API + 웹 → 브라우저. Ctrl+C 로 둘 다 종료
+./scripts/dashboard.sh --no-sync  # 시세 갱신 없이 바로
 ```
 
-```bash
-cd engine && uv run orbit sync-stocks
-```
-
-```bash
-cd engine && uv run orbit serve
-```
-
-```bash
-cd web && pnpm install && pnpm dev
-```
+서버를 늘 켜 두지 않고 볼 때만 띄운다. 토스 시세는 허용 IP 에서만 받아지고, 다른 곳에서는 코인만 새로 받고 나머지는 마지막 데이터로 보인다.
 
 `http://localhost:3000` 에서 확인. 엔진 API(8000)는 이 기기에서만 열린다.
 
