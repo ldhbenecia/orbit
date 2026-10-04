@@ -4,27 +4,22 @@ import { MarketSwitcher } from "@/components/market-switcher";
 import { PriceView } from "@/components/price-view";
 import { SignalCard } from "@/components/signal-card";
 import type { components } from "@/lib/api";
-import { type CandleOut, type Interval, toChartCandle } from "@/lib/candles";
+import { type CandleOut, toChartCandle } from "@/lib/candles";
 import { engineJson } from "@/lib/engine";
 import { findMarket } from "@/lib/markets";
 
-const loadCandles = (market: string, interval: Interval) =>
-  engineJson<CandleOut[]>(`/candles?market=${market}&interval=${interval}`);
+const RECENT_DAILY = 750; // 처음 화면엔 최근 약 2~3년 일봉만 — 나머지는 과거로 밀 때 받음
 
 export default async function Page(props: PageProps<"/">) {
   await connection();
   const info = findMarket((await props.searchParams).market);
   const market = info.market;
-  const [day, week, month, signals, runs] = await Promise.all([
-    loadCandles(market, "day"),
-    loadCandles(market, "week"),
-    loadCandles(market, "month"),
+  const [candles, summary, signals, runs] = await Promise.all([
+    engineJson<CandleOut[]>(`/candles?market=${market}&interval=day&limit=${RECENT_DAILY}`),
+    engineJson<components["schemas"]["CandlesSummaryOut"] | null>(`/candles/summary?market=${market}`),
     engineJson<components["schemas"]["SignalsOut"]>(`/signals?market=${market}`),
     engineJson<components["schemas"]["RunOut"][]>(`/backtests?market=${market}`),
   ]);
-  const candles = day && week && month ? day : null;
-  // 같은 배열을 두 prop 에 넘김 — 따로 map 하면 화면 데이터에 일봉이 두 번 실림
-  const daily = candles?.map(toChartCandle) ?? [];
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-8 sm:py-12">
@@ -40,12 +35,9 @@ export default async function Page(props: PageProps<"/">) {
             key={market}
             info={info}
             runs={runs ?? []}
-            daily={daily}
-            byInterval={{
-              day: daily,
-              week: week!.map(toChartCandle),
-              month: month!.map(toChartCandle),
-            }}
+            recentDaily={candles.map(toChartCandle)}
+            dailyCount={summary?.count ?? candles.length}
+            firstDay={(summary?.first ?? candles[0].start).slice(0, 10)}
           />
         </div>
       )}

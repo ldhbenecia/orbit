@@ -17,6 +17,7 @@ export type ChartMarker = { day: string; side: "buy" | "sell"; count: number }; 
 
 type Props = {
   currency: Currency;
+  resetKey: string; // 바뀔 때만 처음 보이는 구간을 다시 잡음 — 같은 키면 보던 날짜 범위를 유지
   candles: ChartCandle[];
   markers: ChartMarker[];
   initialBars: number | null; // 처음 보여줄 최근 막대 수, null 이면 전체
@@ -38,6 +39,7 @@ const formatTime = (time: Time) => {
 
 export function CandleChart({
   currency,
+  resetKey,
   candles,
   markers,
   initialBars,
@@ -52,6 +54,7 @@ export function CandleChart({
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const badgesRef = useRef<TradeBadges | null>(null);
+  const appliedResetKey = useRef<string | null>(null);
 
   useEffect(() => {
     const el = container.current;
@@ -144,21 +147,28 @@ export function CandleChart({
     });
   }, [currency]);
 
-  // 막대 단위가 바뀌면 데이터와 처음 보이는 구간을 같이 다시 잡음
+  // 막대 단위가 바뀌면 처음 보이는 구간을 다시 잡고, 과거 봉을 앞에 붙인 경우엔 보던 날짜 범위를 유지
   useEffect(() => {
     const chart = chartRef.current;
     const series = seriesRef.current;
     if (!chart || !series) return;
+    const timeScale = chart.timeScale();
+    const keep = appliedResetKey.current === resetKey ? timeScale.getVisibleRange() : null;
     series.setData(
       candles.map((c) => ({ time: c.day, open: c.open, high: c.high, low: c.low, close: c.close })),
     );
+    if (keep) {
+      timeScale.setVisibleRange(keep);
+      return;
+    }
+    appliedResetKey.current = resetKey;
     if (initialBars === null) {
-      chart.timeScale().fitContent();
+      timeScale.fitContent();
     } else {
       const last = candles.length - 1;
-      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - initialBars), to: last + 1 });
+      timeScale.setVisibleLogicalRange({ from: Math.max(0, last - initialBars), to: last + 1 });
     }
-  }, [candles, initialBars]);
+  }, [candles, initialBars, resetKey]);
 
   useEffect(() => {
     const byDay = new Map(candles.map((c) => [c.day, c]));
