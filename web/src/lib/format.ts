@@ -18,6 +18,17 @@ export const formatDate = (day: string) => {
   return `${y}년 ${m}월 ${d}일`;
 };
 
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+export const formatDateWithWeekday = (day: string) =>
+  `${formatDate(day)} (${WEEKDAYS[new Date(`${day}T00:00:00Z`).getUTCDay()]})`;
+
+// 같은 해 안의 날짜를 짧게 — "10월 6일 (화)"
+export const formatMonthDay = (day: string) => {
+  const [, m, d] = day.split("-").map(Number);
+  return `${m}월 ${d}일 (${WEEKDAYS[new Date(`${day}T00:00:00Z`).getUTCDay()]})`;
+};
+
 const compactWon = [1, 2, 3, 4].map(
   (digits) => new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: digits }),
 );

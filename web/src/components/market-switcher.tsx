@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { type ReactNode, useEffect, useRef, useState, useTransition } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState, useTransition } from "react";
 
 import { type Currency, formatPercent, formatPrice } from "@/lib/format";
 import { findMarket, GROUPS, MARKETS } from "@/lib/markets";
@@ -40,7 +40,8 @@ export function MarketSwitcher({
   return (
     <div className="space-y-8">
       <div
-        className="no-scrollbar -mx-4 flex snap-x gap-2 overflow-x-auto px-4 lg:mx-0 lg:grid lg:grid-cols-6 lg:overflow-visible lg:px-0"
+        className="no-scrollbar -mx-4 flex snap-x gap-2 overflow-x-auto px-4 lg:mx-0 lg:grid lg:grid-cols-[repeat(var(--tiles),minmax(0,1fr))] lg:overflow-visible lg:px-0"
+        style={{ "--tiles": MARKETS.length } as CSSProperties}
         role="tablist"
         aria-label="종목"
       >
