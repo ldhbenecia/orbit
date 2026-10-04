@@ -35,12 +35,13 @@ const barLabel = (day: string, interval: Interval) => {
 
 type Props = {
   market: string;
+  name: string;
   runs: Run[];
   daily: ChartCandle[];
   byInterval: Record<Interval, ChartCandle[]>;
 };
 
-export function PriceView({ market, runs, daily, byInterval }: Props) {
+export function PriceView({ market, name, runs, daily, byInterval }: Props) {
   const [interval, setInterval] = useState<Interval>("day");
   const [runId, setRunId] = useState<number | null>(null);
   const [tradesByRun, setTradesByRun] = useState<Record<number, TradesState>>({});
@@ -107,7 +108,9 @@ export function PriceView({ market, runs, daily, byInterval }: Props) {
   return (
     <div className="space-y-8">
       <section className="space-y-1">
-        <p className="text-sm text-muted">비트코인 · {market}</p>
+        <p className="text-sm text-muted">
+          {name} · {market}
+        </p>
         <p className="text-4xl font-bold tracking-tight tabular-nums">{formatWon(last.close)}</p>
         <p className={`text-sm font-medium tabular-nums ${tone(change)}`}>
           {formatSignedWon(change)} ({formatPercent(change / prev.close)})
