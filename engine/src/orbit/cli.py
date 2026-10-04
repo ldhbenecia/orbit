@@ -21,6 +21,7 @@ from orbit.backtest.compare import compare_lump_vs_dca, select_period
 from orbit.backtest.engine import DEFAULT_CONFIG, Funding, run_backtest
 from orbit.backtest.metrics import Metrics, compute_metrics
 from orbit.backtest.runs import RunSpec, save_run
+from orbit.backtest.validate import check_rules, save_checks, specs_for
 from orbit.estimate.live import NEXT_OPEN_BASKETS, NextOpenView, build_view
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.fund_nav import Nav, fetch_ace_nav, fetch_tiger_nav
@@ -86,6 +87,12 @@ def main() -> None:
     strategies.add_argument("--monthly", type=Decimal, default=Decimal(0))
     strategies.add_argument("--db", type=Path, default=DEFAULT_DB)
 
+    validate = commands.add_parser(
+        "validate", help="규칙 검증 — 기간을 나눈 성과와 파라미터 민감도를 기록 (코인·미국주식)"
+    )
+    validate.add_argument("--market", action="append", help="여러 번 줄 수 있음. 없으면 전부")
+    validate.add_argument("--db", type=Path, default=DEFAULT_DB)
+
     args = parser.parse_args()
     if args.command == "sync-candles":
         _sync_candles(args.market, args.db)
@@ -106,6 +113,8 @@ def main() -> None:
         uvicorn.run(app, host="127.0.0.1", port=args.port)
     elif args.command == "backtest":
         _backtest(args.market, args.start, args.end, args.monthly, args.db)
+    elif args.command == "validate":
+        _validate(args.market or list(VALIDATED_MARKETS), args.db)
     elif args.command == "compare-strategies":
         _compare_strategies(args)
     elif args.command == "signal":
@@ -221,6 +230,47 @@ _GLOSSARY = [
     "  (기준가)      중간 입금 효과를 뺀 전략 자체의 성과",
     "  과거 데이터로 돌린 결과이며 앞으로도 같다는 뜻이 아님",
 ]
+
+
+# 국내 ETF 는 호가 단위를 공식 확인하기 전이라 제외
+VALIDATED_MARKETS = ("KRW-BTC", "KRW-ETH", "US-QQQ", "US-SPY")
+
+
+def _validate(markets: list[str], db: Path) -> None:
+    version = _code_version()
+    now = datetime.now(UTC)
+    conn = sqlite3.connect(db)
+    try:
+        for market in markets:
+            candles = CandleStore(conn).load(market)
+            rows = check_rules(market, candles, specs_for(market))
+            save_checks(conn, market, rows, now, version)
+            table = {(r.strategy, r.period): r for r in rows}
+            whole = table[("hold", "all")]
+            log.info(
+                "%s 평가 %s ~ %s (코드 %s)",
+                market,
+                f"{whole.start:%Y-%m-%d}",
+                f"{whole.end:%Y-%m-%d}",
+                version,
+            )
+            log.info(
+                "%-10s %9s %9s %9s %8s %6s", "", "CAGR 전체", "앞 절반", "뒤 절반", "MDD", "거래"
+            )
+            for spec in specs_for(market):
+                a, f, b = (table[(spec, p)] for p in ("all", "first", "second"))
+                log.info(
+                    "%-10s %9s %9s %9s %8s %6d",
+                    spec,
+                    f"{a.cagr:+.1%}",
+                    f"{f.cagr:+.1%}",
+                    f"{b.cagr:+.1%}",
+                    f"{a.mdd:.1%}",
+                    a.trades,
+                )
+    finally:
+        conn.close()
+    log.info("\n과거 데이터로 돌린 결과이며 앞으로도 같다는 뜻이 아님")
 
 
 def _code_version() -> str:

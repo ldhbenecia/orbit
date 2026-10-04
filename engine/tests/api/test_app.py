@@ -250,3 +250,10 @@ def test_다음_개장_추정은_국내_ETF_만_계산하고_실패하면_비움
     assert (body["estimate"], body["next_open_day"]) == ("7656.6", "2026-10-06")
     assert client.get("/next-open", params={"market": "US-QQQ"}).json() is None
     assert client.get("/next-open", params={"market": "KRX-360750"}).json() is None
+
+
+def test_규칙_검증은_기록이_없으면_비움(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    client = TestClient(create_app(lambda: sqlite3.connect(db)))
+
+    assert client.get("/rule-checks", params={"market": "KRW-BTC"}).json() is None

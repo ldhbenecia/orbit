@@ -12,6 +12,7 @@ from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
 from orbit.backtest.runs import latest_runs, load_trades
+from orbit.backtest.validate import latest_checks
 from orbit.dca.plan import next_payday, run_dca
 from orbit.estimate.live import NEXT_OPEN_BASKETS, NextOpenView
 from orbit.indicators.moving_average import sma
@@ -126,6 +127,23 @@ class NextOpenOut(BaseModel):
     nav_day: date | None  # 운용사가 올린 최신 기준가의 날짜
     nav: Decimal | None  # 기준가 (1주당 순자산가치)
     nav_estimate: Decimal | None  # 한국 종가와 같은 날 기준가에서 출발한 추정
+
+
+class RuleCheckOut(BaseModel):
+    strategy: str
+    period: Literal["all", "first", "second"]  # 평가 전체 / 앞 절반 / 뒤 절반
+    start: datetime
+    end: datetime
+    cagr: Decimal
+    mdd: Decimal
+    trades: int
+    fee_ratio: Decimal  # 기간 수수료·슬리피지 ÷ 기간 시작 평가액
+
+
+class RuleChecksOut(BaseModel):
+    created_at: datetime
+    code_version: str
+    rows: list[RuleCheckOut]
 
 
 log = logging.getLogger(__name__)
@@ -311,6 +329,34 @@ def create_app(
             nav_day=view.nav_day,
             nav=view.nav,
             nav_estimate=view.nav_estimate,
+        )
+
+    @app.get("/rule-checks")
+    def rule_checks(market: str) -> RuleChecksOut | None:
+        # orbit validate 로 기록한 가장 최근 검증 — 없으면 비움
+        conn = connect()
+        try:
+            saved = latest_checks(conn, market)
+        finally:
+            conn.close()
+        if saved is None:
+            return None
+        return RuleChecksOut(
+            created_at=saved.created_at,
+            code_version=saved.code_version,
+            rows=[
+                RuleCheckOut(
+                    strategy=r.strategy,
+                    period=r.period,
+                    start=r.start,
+                    end=r.end,
+                    cagr=r.cagr,
+                    mdd=r.mdd,
+                    trades=r.trades,
+                    fee_ratio=r.fee_ratio,
+                )
+                for r in saved.rows
+            ],
         )
 
     @app.get("/backtests")
