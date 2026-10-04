@@ -9,8 +9,9 @@ const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const withWeekday = (day: string) => `${formatDate(day)} (${WEEKDAYS[new Date(`${day}T00:00:00Z`).getUTCDay()]})`;
 
 // 기호(+/−) 대신 말로 — 적립하는 입장에서는 평균보다 싸게 사는지가 관심사
+const NEAR = 0.005; // 0.5% 안쪽은 평균과 같다고 봄 — 색으로 강조하지 않음
 const position = (gap: number) => {
-  if (Math.abs(gap) < 0.005) return "평균과 거의 같음";
+  if (Math.abs(gap) < NEAR) return "평균과 거의 같음";
   return `평균보다 ${Math.abs(gap * 100).toFixed(1)}% ${gap > 0 ? "비쌈" : "쌈"}`;
 };
 
@@ -51,7 +52,7 @@ export function DcaCard({ info, data }: { info: MarketInfo; data: Dca }) {
                 최근 {p.window}거래일 (약 {Math.round(p.window / 21)}개월) 평균 {formatWon(Number(p.average))}
               </span>
               <span
-                className={`shrink-0 rounded-md bg-background px-2 py-0.5 text-xs font-medium tabular-nums ${tone(Number(p.gap))}`}
+                className={`shrink-0 rounded-md bg-background px-2 py-0.5 text-xs font-medium tabular-nums ${Math.abs(Number(p.gap)) < NEAR ? "text-muted" : tone(Number(p.gap))}`}
               >
                 {position(Number(p.gap))}
               </span>
@@ -91,7 +92,7 @@ export function DcaCard({ info, data }: { info: MarketInfo; data: Dca }) {
 
       <p className="text-xs leading-relaxed text-muted">
         분석용이에요 — 투자 권유가 아니에요. 적립일 종가에 1주 단위로 샀다고 보고 남은 돈은 다음 달로 넘겼어요. 금액은
-        예시이고, 한국투자증권 ISA 수수료는 확인 전이라 빼고 계산했어요.
+        예시이고, 매매 수수료는 빼고 계산했어요.
       </p>
     </section>
   );
