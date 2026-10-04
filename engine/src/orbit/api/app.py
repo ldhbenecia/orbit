@@ -1,9 +1,8 @@
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from pydantic import BaseModel
 
 from orbit.marketdata.store import CandleStore
@@ -21,18 +20,15 @@ class CandleOut(BaseModel):
 def create_app(open_store: Callable[[], CandleStore]) -> FastAPI:
     app = FastAPI(title="orbit", docs_url=None, redoc_url=None)
 
-    def store() -> Iterator[CandleStore]:
-        # sqlite 연결은 스레드를 넘기면 안 됨 — 요청마다 열고 닫음
-        s = open_store()
-        try:
-            yield s
-        finally:
-            s.close()
-
     @app.get("/candles")
-    def candles(
-        store: Annotated[CandleStore, Depends(store)], market: str = "KRW-BTC"
-    ) -> list[CandleOut]:
+    def candles(market: str = "KRW-BTC") -> list[CandleOut]:
+        # sqlite 연결은 만든 스레드에서만 쓸 수 있음 — 의존성으로 열면 FastAPI 가
+        # 의존성과 핸들러를 다른 작업 스레드에서 돌릴 수 있어 동시 요청 시 깨짐
+        store = open_store()
+        try:
+            loaded = store.load(market)
+        finally:
+            store.close()
         return [
             CandleOut(
                 start=c.start,
@@ -42,7 +38,7 @@ def create_app(open_store: Callable[[], CandleStore]) -> FastAPI:
                 close=c.close,
                 volume=c.volume,
             )
-            for c in store.load(market)
+            for c in loaded
         ]
 
     return app
