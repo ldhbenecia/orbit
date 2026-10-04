@@ -145,3 +145,25 @@ def test_백테스트_목록과_매매(tmp_path: Path) -> None:
     assert len(trades) == len(result.trades)
     assert trades[0]["side"] == "buy"
     assert int(trades[0]["price"]) % 1000 == 0
+
+
+def test_최근_N개만_돌려주고_전체_범위는_요약으로(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    store = CandleStore.open(db)
+    days = [D + timedelta(days=i) for i in range(10)]
+    store.upsert(
+        [
+            Candle("KRW-BTC", d, Decimal(1), Decimal(1), Decimal(1), Decimal(1), Decimal(1))
+            for d in days
+        ],
+        fetched_at=D,
+    )
+    store.close()
+    client = TestClient(create_app(lambda: sqlite3.connect(db)))
+
+    recent = client.get("/candles", params={"limit": 3}).json()
+    summary = client.get("/candles/summary").json()
+
+    assert [c["start"][:10] for c in recent] == [d.date().isoformat() for d in days[-3:]]
+    assert (summary["first"][:10], summary["count"]) == ("2024-01-01", 10)
+    assert client.get("/candles", params={"limit": 0}).status_code == 422

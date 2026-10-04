@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
 from orbit.backtest.runs import latest_runs, load_trades
@@ -22,6 +22,12 @@ class CandleOut(BaseModel):
     low: Decimal
     close: Decimal
     volume: Decimal
+
+
+class CandlesSummaryOut(BaseModel):
+    first: datetime  # 첫 일봉, UTC
+    last: datetime
+    count: int  # 일봉 개수
 
 
 class SignalOut(BaseModel):
@@ -80,7 +86,14 @@ def create_app(
             conn.close()
 
     @app.get("/candles")
-    def candles(market: str = "KRW-BTC", interval: Interval = Interval.DAY) -> list[CandleOut]:
+    def candles(
+        market: str = "KRW-BTC",
+        interval: Interval = Interval.DAY,
+        limit: int | None = Query(None, ge=1),  # 최근 N 개만 — 첫 화면은 일부만 보냄
+    ) -> list[CandleOut]:
+        bars = aggregate(load_candles(market), interval)
+        if limit is not None:
+            bars = bars[-limit:]
         return [
             CandleOut(
                 start=c.start,
@@ -90,8 +103,15 @@ def create_app(
                 close=c.close,
                 volume=c.volume,
             )
-            for c in aggregate(load_candles(market), interval)
+            for c in bars
         ]
+
+    @app.get("/candles/summary")
+    def candles_summary(market: str = "KRW-BTC") -> CandlesSummaryOut | None:
+        loaded = load_candles(market)
+        if not loaded:
+            return None
+        return CandlesSummaryOut(first=loaded[0].start, last=loaded[-1].start, count=len(loaded))
 
     @app.get("/signals")
     def signals(market: str = "KRW-BTC") -> SignalsOut:
