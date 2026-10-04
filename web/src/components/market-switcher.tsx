@@ -3,10 +3,19 @@
 import { useRouter } from "next/navigation";
 import { type ReactNode, useLayoutEffect, useRef, useState, useTransition } from "react";
 
-import { findMarket, GROUPS, type MarketGroup, marketsOf } from "@/lib/markets";
+import { findMarket, GROUPS, MARKETS, type MarketGroup, marketsOf } from "@/lib/markets";
+import type { Line } from "@/lib/summary";
 
 // 서버가 새 종목 화면을 그리는 동안에도 선택 표시는 바로 움직이고, 아래 내용은 흐리게 — 눌렀는데 반응이 없다고 느끼지 않게
-export function MarketSwitcher({ current, children }: { current: string; children: ReactNode }) {
+export function MarketSwitcher({
+  current,
+  lines,
+  children,
+}: {
+  current: string;
+  lines: Partial<Record<string, Line>>;
+  children: ReactNode;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [chosen, setChosen] = useState<string | null>(null);
@@ -20,6 +29,7 @@ export function MarketSwitcher({ current, children }: { current: string; childre
 
   return (
     <div className="space-y-6">
+      <Overview selected={selected.market} lines={lines} onSelect={go} />
       <div className="space-y-3">
         <GroupTabs value={selected.group} onChange={(group) => go(marketsOf(group)[0].market)} />
         <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4" role="tablist" aria-label="종목">
@@ -45,6 +55,46 @@ export function MarketSwitcher({ current, children }: { current: string; childre
         {children}
       </div>
     </div>
+  );
+}
+
+// 전 종목을 한 줄씩 — 신호를 못 받은 종목은 줄을 비워 둠
+function Overview({
+  selected,
+  lines,
+  onSelect,
+}: {
+  selected: string;
+  lines: Partial<Record<string, Line>>;
+  onSelect: (market: string) => void;
+}) {
+  if (Object.keys(lines).length === 0) return null;
+  return (
+    <section className="space-y-1">
+      <p className="px-1 text-xs text-muted">전 종목 한 줄 신호</p>
+      <ul>
+        {MARKETS.map((m) => {
+          const line = lines[m.market];
+          return (
+            <li key={m.market}>
+              <button
+                type="button"
+                onClick={() => onSelect(m.market)}
+                aria-current={m.market === selected}
+                className={`flex w-full items-baseline justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
+                  m.market === selected ? "bg-subtle" : "hover:bg-subtle"
+                }`}
+              >
+                <span className="min-w-0 truncate text-sm font-medium">{m.name}</span>
+                <span className={`shrink-0 text-sm tabular-nums ${line?.tone ?? "text-muted"}`}>
+                  {line?.text ?? "—"}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

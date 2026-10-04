@@ -2,20 +2,13 @@ import type { components } from "@/lib/api";
 import { type Currency, formatDate, formatPrice } from "@/lib/format";
 import type { MarketInfo } from "@/lib/markets";
 import { ruleDescription, ruleParam, ruleShortName } from "@/lib/rules";
+import { buySideCount, STANCE } from "@/lib/summary";
 
 type Signals = components["schemas"]["SignalsOut"];
 type Signal = components["schemas"]["SignalOut"];
-type Stance = components["schemas"]["Stance"];
-
-const STANCE: Record<Stance, { label: string; tone: string; buySide: boolean }> = {
-  hold: { label: "보유 구간", tone: "text-up", buySide: true },
-  cash: { label: "현금 구간", tone: "text-down", buySide: false },
-  breakout_hit: { label: "오늘 돌파함", tone: "text-up", buySide: true },
-  breakout_wait: { label: "돌파 대기", tone: "text-muted", buySide: false },
-};
 
 export function SignalCard({ info, data }: { info: MarketInfo; data: Signals }) {
-  const buySide = data.signals.filter((s) => STANCE[s.stance].buySide).length;
+  const buySide = buySideCount(data);
   const total = data.signals.length;
 
   return (
