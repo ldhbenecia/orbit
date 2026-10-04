@@ -3,16 +3,15 @@
 import {
   CandlestickSeries,
   createChart,
-  createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
-  type ISeriesMarkersPluginApi,
   type Time,
 } from "lightweight-charts";
 import { useEffect, useRef } from "react";
 
 import type { ChartCandle } from "@/lib/candles";
 import { formatCompactWonTicks, formatDate, formatWon } from "@/lib/format";
+import { TradeBadges } from "@/lib/trade-badges";
 
 export type ChartMarker = { day: string; side: "buy" | "sell"; count: number }; // day 는 막대 시작일
 
@@ -36,7 +35,13 @@ const formatTime = (time: Time) => {
   return `${time.year}년 ${time.month}월 ${time.day}일`;
 };
 
-export function CandleChart({ candles, markers, initialBars, onVisibleChange, onHover }: Props) {
+export function CandleChart({
+  candles,
+  markers,
+  initialBars,
+  onVisibleChange,
+  onHover,
+}: Props) {
   const container = useRef<HTMLDivElement>(null);
   const callbacks = useRef({ onVisibleChange, onHover, count: candles.length });
   useEffect(() => {
@@ -44,7 +49,7 @@ export function CandleChart({ candles, markers, initialBars, onVisibleChange, on
   });
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const badgesRef = useRef<TradeBadges | null>(null);
 
   useEffect(() => {
     const el = container.current;
@@ -113,13 +118,20 @@ export function CandleChart({ candles, markers, initialBars, onVisibleChange, on
 
     chartRef.current = chart;
     seriesRef.current = series;
-    markersRef.current = createSeriesMarkers(series, []);
+    const badges = new TradeBadges({
+      buy: up,
+      sell: down,
+      text: "#ffffff",
+      font: getComputedStyle(document.body).fontFamily,
+    });
+    series.attachPrimitive(badges);
+    badgesRef.current = badges;
     return () => {
       el.removeEventListener("wheel", onWheel);
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
-      markersRef.current = null;
+      badgesRef.current = null;
     };
   }, []);
 
@@ -139,18 +151,13 @@ export function CandleChart({ candles, markers, initialBars, onVisibleChange, on
     }
   }, [candles, initialBars]);
 
-  // 토스증권 "구매·판매 표시" 처럼 B·S 글자 — 매수는 막대 아래, 매도는 막대 위
   useEffect(() => {
-    const up = cssVar("--up");
-    const down = cssVar("--down");
-    markersRef.current?.setMarkers(
-      markers.map((m) => ({
-        time: m.day,
-        position: m.side === "buy" ? "belowBar" : "aboveBar",
-        shape: m.side === "buy" ? "arrowUp" : "arrowDown",
-        color: m.side === "buy" ? up : down,
-        text: `${m.side === "buy" ? "B" : "S"}${m.count > 1 ? ` ${m.count}` : ""}`,
-      })),
+    const byDay = new Map(candles.map((c) => [c.day, c]));
+    badgesRef.current?.setBadges(
+      markers.flatMap((m) => {
+        const bar = byDay.get(m.day);
+        return bar ? [{ time: m.day, side: m.side, count: m.count, high: bar.high, low: bar.low }] : [];
+      }),
     );
   }, [candles, markers]);
 

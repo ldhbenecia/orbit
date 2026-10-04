@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { CandleChart, type ChartMarker } from "@/components/candle-chart";
+import { SegmentedControl } from "@/components/segmented-control";
 import type { components } from "@/lib/api";
 import type { ChartCandle, Interval } from "@/lib/candles";
 import { formatDate, formatPercent, formatSignedWon, formatWon } from "@/lib/format";
@@ -78,6 +79,12 @@ export function PriceView({ market, name, runs, daily, byInterval }: Props) {
     [bars],
   );
   const legendTrades = bars.get(legend.day);
+  const legendTradeText = legendTrades
+    ? [...legendTrades.buys, ...legendTrades.sells]
+        .map((t) => `${t.side === "buy" ? "매수" : "매도"} ${formatWon(t.price)} · ${t.reason}`)
+        .join(" / ")
+    : null;
+
 
   const selectRun = async (id: number | null) => {
     setRunId(id);
@@ -121,22 +128,13 @@ export function PriceView({ market, name, runs, daily, byInterval }: Props) {
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1 rounded-xl bg-subtle p-1" role="tablist" aria-label="막대 단위">
-            {INTERVALS.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                role="tab"
-                aria-selected={o.value === interval}
-                onClick={() => setInterval(o.value)}
-                className={`w-12 rounded-lg py-1.5 text-sm font-medium transition-colors ${
-                  o.value === interval ? "bg-background text-foreground shadow-sm" : "text-muted hover:text-foreground"
-                }`}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label="막대 단위"
+            options={INTERVALS}
+            value={interval}
+            onChange={setInterval}
+            className="w-40"
+          />
           {runs.length > 0 && (
             <label className="flex items-center gap-2 text-sm text-muted">
               매매 표시
@@ -166,7 +164,8 @@ export function PriceView({ market, name, runs, daily, byInterval }: Props) {
           </p>
         )}
 
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs tabular-nums">
+        {/* 범례 줄은 높이를 고정 — 값에 따라 줄 수가 바뀌면 차트가 위아래로 밀림 */}
+        <div className="flex min-h-10 flex-wrap content-start items-baseline gap-x-3 gap-y-1 text-xs tabular-nums sm:min-h-5">
           <span className="font-medium">{barLabel(legend.day, interval)}</span>
           <span className="text-muted">
             시 <span className="text-foreground">{formatWon(legend.open)}</span>
@@ -182,17 +181,13 @@ export function PriceView({ market, name, runs, daily, byInterval }: Props) {
           </span>
         </div>
 
-        {legendTrades && (
-          <ul className="space-y-0.5 text-xs">
-            {[...legendTrades.buys, ...legendTrades.sells].map((t, i) => (
-              <li key={i} className="text-muted">
-                <span className={t.side === "buy" ? "text-up" : "text-down"}>
-                  {t.side === "buy" ? "매수" : "매도"} {formatWon(t.price)}
-                </span>{" "}
-                · {t.reason}
-              </li>
-            ))}
-          </ul>
+        {run && (
+          <p
+            className={`h-5 truncate text-xs ${legendTradeText ? "text-foreground" : "text-muted"}`}
+            title={legendTradeText ?? undefined}
+          >
+            {legendTradeText ?? "막대에 올리면 그날 매매와 이유가 보여요"}
+          </p>
         )}
 
         <CandleChart
