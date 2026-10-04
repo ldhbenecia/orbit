@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Decimal
 
 
 def to_units(value: Decimal, scale: int) -> int:
@@ -11,3 +11,8 @@ def to_units(value: Decimal, scale: int) -> int:
 
 def from_units(units: int, scale: int) -> Decimal:
     return Decimal(units).scaleb(-scale)
+
+
+def round_to_units(value: Decimal, scale: int) -> int:
+    # 백테스트 같은 분석 산출물 전용 — 장부·주문 금액에는 쓰지 않음 (to_units 로 정확히)
+    return int(value.scaleb(scale).to_integral_value(ROUND_HALF_EVEN))
