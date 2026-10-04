@@ -6,15 +6,15 @@ import { SignalCard } from "@/components/signal-card";
 import type { components } from "@/lib/api";
 import { type CandleOut, type Interval, toChartCandle } from "@/lib/candles";
 import { engineJson } from "@/lib/engine";
-import { findCoinMarket } from "@/lib/markets";
+import { findMarket } from "@/lib/markets";
 
 const loadCandles = (market: string, interval: Interval) =>
   engineJson<CandleOut[]>(`/candles?market=${market}&interval=${interval}`);
 
 export default async function Page(props: PageProps<"/">) {
   await connection();
-  const coin = findCoinMarket((await props.searchParams).market);
-  const market = coin.market;
+  const info = findMarket((await props.searchParams).market);
+  const market = info.market;
   const [day, week, month, signals, runs] = await Promise.all([
     loadCandles(market, "day"),
     loadCandles(market, "week"),
@@ -35,11 +35,10 @@ export default async function Page(props: PageProps<"/">) {
         <Notice title="아직 받은 일봉이 없어요" command={`uv run --project engine orbit sync-candles --market ${market}`} />
       ) : (
         <div className="space-y-10">
-          {signals && <SignalCard name={coin.name} data={signals} />}
+          {signals && <SignalCard info={info} data={signals} />}
           <PriceView
             key={market}
-            market={market}
-            name={coin.name}
+            info={info}
             runs={runs ?? []}
             daily={daily}
             byInterval={{
