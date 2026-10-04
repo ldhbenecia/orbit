@@ -12,7 +12,7 @@ from orbit.marketdata.aggregate import Interval, aggregate
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.upbit_ticker import Ticker
-from orbit.signals.today import Stance, today_signals
+from orbit.signals.today import Stance, is_upbit_market, today_signals
 
 
 class CandleOut(BaseModel):
@@ -96,7 +96,8 @@ def create_app(
     @app.get("/signals")
     def signals(market: str = "KRW-BTC") -> SignalsOut:
         loaded = load_candles(market)
-        ticker = get_ticker(market)
+        # 오늘 시가·현재가는 업비트 코인만 — 주식은 확정 일봉 기반 신호만
+        ticker = get_ticker(market) if is_upbit_market(market) else None
         return SignalsOut(
             as_of=loaded[-1].start,
             price=ticker.price if ticker else None,
@@ -109,7 +110,7 @@ def create_app(
                     days=s.days,
                     trigger=s.trigger,
                 )
-                for s in today_signals(loaded, ticker)
+                for s in today_signals(market, loaded, ticker)
             ],
         )
 
