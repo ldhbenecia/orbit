@@ -1,7 +1,7 @@
 import type { components } from "@/lib/api";
 import { type Currency, formatDate, formatPrice } from "@/lib/format";
 import type { MarketInfo } from "@/lib/markets";
-import { ruleName } from "@/lib/rules";
+import { ruleDescription, ruleName } from "@/lib/rules";
 
 type Signals = components["schemas"]["SignalsOut"];
 type Signal = components["schemas"]["SignalOut"];
@@ -37,7 +37,7 @@ export function SignalCard({ info, data }: { info: MarketInfo; data: Signals }) 
 
       <ul className="divide-y divide-border">
         {data.signals.map((s) => (
-          <SignalRow key={s.strategy} signal={s} currency={info.currency} />
+          <SignalRow key={s.strategy} signal={s} info={info} />
         ))}
       </ul>
 
@@ -48,19 +48,21 @@ export function SignalCard({ info, data }: { info: MarketInfo; data: Signals }) 
   );
 }
 
-function SignalRow({ signal, currency }: { signal: Signal; currency: Currency }) {
+function SignalRow({ signal, info }: { signal: Signal; info: MarketInfo }) {
+  const currency: Currency = info.currency;
+  const price = (value: string) => formatPrice(Number(value), currency);
   const stance = STANCE[signal.stance];
   const detail = signal.trigger
-    ? `기준선 ${formatPrice(Number(signal.trigger), currency)}`
+    ? `기준선 ${price(signal.trigger)}`
     : signal.days
       ? `${signal.days}일째`
       : null;
 
   return (
-    <li className="space-y-1 py-3">
+    <li className="space-y-1.5 py-3">
       <div className="flex items-baseline justify-between gap-3">
         <p className="font-medium">
-          {ruleName(signal.strategy)}
+          {ruleName(signal.strategy, info.group)}
           <span className="ml-2 rounded-md bg-background px-1.5 py-0.5 text-xs font-normal text-muted">
             {signal.status}
           </span>
@@ -70,7 +72,39 @@ function SignalRow({ signal, currency }: { signal: Signal; currency: Currency })
           {detail && <span className="ml-1 font-normal text-muted tabular-nums">· {detail}</span>}
         </p>
       </div>
-      <p className="text-xs text-muted tabular-nums">{signal.reason}</p>
+      <p className="text-xs text-muted">{ruleDescription(signal.strategy)}</p>
+      {signal.reference ? (
+        <ReferenceLine close={price(signal.close)} reference={price(signal.reference)} gap={Number(signal.close) / Number(signal.reference) - 1} />
+      ) : signal.trigger ? (
+        <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm tabular-nums">
+          <span>
+            <span className="text-xs text-muted">오늘 기준선 </span>
+            {price(signal.trigger)}
+          </span>
+        </p>
+      ) : null}
     </li>
+  );
+}
+
+// 근거 문장 대신 숫자를 라벨과 함께, 평균과의 차이는 기호가 아니라 말과 색으로
+function ReferenceLine({ close, reference, gap }: { close: string; reference: string; gap: number }) {
+  const above = gap >= 0;
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm tabular-nums">
+      <span>
+        <span className="text-xs text-muted">지금 </span>
+        {close}
+      </span>
+      <span>
+        <span className="text-xs text-muted">평균 </span>
+        {reference}
+      </span>
+      <span
+        className={`rounded-md bg-background px-2 py-0.5 text-xs font-medium ${above ? "text-up" : "text-down"}`}
+      >
+        평균보다 {Math.abs(gap * 100).toFixed(1)}% {above ? "높음" : "낮음"}
+      </span>
+    </div>
   );
 }

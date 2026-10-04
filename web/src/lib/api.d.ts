@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/dca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dca */
+        get: operations["dca_dca_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/backtests": {
         parameters: {
             query?: never;
@@ -126,6 +143,43 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** DcaOut */
+        DcaOut: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Close */
+            close: string;
+            /**
+             * Next Payday
+             * Format: date
+             */
+            next_payday: string;
+            /** Days Until */
+            days_until: number;
+            /** Holidays Checked */
+            holidays_checked: boolean;
+            /** Positions */
+            positions: components["schemas"]["PricePositionOut"][];
+            /** Monthly */
+            monthly: string;
+            /** First Buy */
+            first_buy: string | null;
+            /** Months */
+            months: number;
+            /** Invested */
+            invested: string;
+            /** Final Value */
+            final_value: string;
+            /** Return On Invested */
+            return_on_invested: string;
+            /** Worst Vs Invested */
+            worst_vs_invested: string;
+            /** Average Cost */
+            average_cost: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -136,6 +190,15 @@ export interface components {
          * @enum {string}
          */
         Interval: "day" | "week" | "month";
+        /** PricePositionOut */
+        PricePositionOut: {
+            /** Window */
+            window: number;
+            /** Average */
+            average: string;
+            /** Gap */
+            gap: string;
+        };
         /** RunOut */
         RunOut: {
             /** Id */
@@ -179,6 +242,10 @@ export interface components {
             days: number | null;
             /** Trigger */
             trigger: string | null;
+            /** Close */
+            close: string;
+            /** Reference */
+            reference: string | null;
         };
         /** SignalsOut */
         SignalsOut: {
@@ -320,6 +387,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SignalsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dca_dca_get: {
+        parameters: {
+            query: {
+                market: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DcaOut"] | null;
                 };
             };
             /** @description Validation Error */

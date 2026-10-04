@@ -202,7 +202,7 @@ export function PriceView({ info, runs, recentDaily, dailyCount, firstDay }: Pro
                 <option value="">표시 안 함</option>
                 {[...runs].sort(byRuleOrder).map((r) => (
                   <option key={r.id} value={r.id}>
-                    {`${ruleName(r.strategy)} 백테스트`}
+                    {`${ruleName(r.strategy, info.group)} 백테스트`}
                   </option>
                 ))}
               </select>
@@ -216,7 +216,7 @@ export function PriceView({ info, runs, recentDaily, dailyCount, firstDay }: Pro
               ? "매매 기록을 불러오는 중"
               : tradesState === "error"
                 ? "매매 기록을 불러오지 못했어요"
-                : `${ruleName(run.strategy)} 백테스트 ${formatDate(run.start.slice(0, 10))} ~ ${formatDate(run.end.slice(0, 10))} · 매매 ${run.trades.toLocaleString("ko-KR")}건 · 코드 ${run.code_version} · 실제 거래가 아니에요`}
+                : `${ruleName(run.strategy, info.group)} 백테스트 ${formatDate(run.start.slice(0, 10))} ~ ${formatDate(run.end.slice(0, 10))} · 매매 ${run.trades.toLocaleString("ko-KR")}건 · 코드 ${run.code_version} · 실제 거래가 아니에요`}
           </p>
         )}
 
