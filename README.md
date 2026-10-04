@@ -1,6 +1,4 @@
-<img src="docs/assets/logo.svg" alt="" width="56" />
-
-# orbit
+<h1><img src="docs/assets/logo.svg" alt="" height="40" align="top" /> orbit</h1>
 
 규칙으로 "살지 말지"의 근거를 보여주는 개인 투자 대시보드이자, 퀀트 트레이딩을 만들면서 배우는 연습장.
 
