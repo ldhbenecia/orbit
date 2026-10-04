@@ -1,12 +1,12 @@
-import Link from "next/link";
 import { connection } from "next/server";
 
+import { MarketSwitcher } from "@/components/market-switcher";
 import { PriceView } from "@/components/price-view";
 import { SignalCard } from "@/components/signal-card";
 import type { components } from "@/lib/api";
 import { type CandleOut, type Interval, toChartCandle } from "@/lib/candles";
 import { engineJson } from "@/lib/engine";
-import { COIN_MARKETS, findCoinMarket } from "@/lib/markets";
+import { findCoinMarket } from "@/lib/markets";
 
 const loadCandles = (market: string, interval: Interval) =>
   engineJson<CandleOut[]>(`/candles?market=${market}&interval=${interval}`);
@@ -23,23 +23,12 @@ export default async function Page(props: PageProps<"/">) {
     engineJson<components["schemas"]["RunOut"][]>(`/backtests?market=${market}`),
   ]);
   const candles = day && week && month ? day : null;
+  // 같은 배열을 두 prop 에 넘김 — 따로 map 하면 화면 데이터에 일봉이 두 번 실림
+  const daily = candles?.map(toChartCandle) ?? [];
 
   return (
-    <main className="mx-auto w-full max-w-2xl space-y-6 px-4 py-8 sm:py-12">
-      <nav className="flex gap-1 rounded-xl bg-subtle p-1" aria-label="종목">
-        {COIN_MARKETS.map((m) => (
-          <Link
-            key={m.market}
-            href={`/?market=${m.market}`}
-            aria-current={m.market === market ? "page" : undefined}
-            className={`flex-1 rounded-lg py-2 text-center text-sm font-medium transition-colors ${
-              m.market === market ? "bg-background text-foreground shadow-sm" : "text-muted hover:text-foreground"
-            }`}
-          >
-            {m.name}
-          </Link>
-        ))}
-      </nav>
+    <main className="mx-auto w-full max-w-2xl px-4 py-8 sm:py-12">
+      <MarketSwitcher current={market}>
       {candles === null ? (
         <Notice title="엔진 API 에 연결할 수 없어요" command="uv run --project engine orbit serve" />
       ) : candles.length < 2 ? (
@@ -52,15 +41,16 @@ export default async function Page(props: PageProps<"/">) {
             market={market}
             name={coin.name}
             runs={runs ?? []}
-            daily={candles.map(toChartCandle)}
+            daily={daily}
             byInterval={{
-              day: candles.map(toChartCandle),
+              day: daily,
               week: week!.map(toChartCandle),
               month: month!.map(toChartCandle),
             }}
           />
         </div>
       )}
+      </MarketSwitcher>
     </main>
   );
 }
