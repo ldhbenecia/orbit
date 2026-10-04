@@ -5,21 +5,21 @@
 - 패키지·가상환경: `uv` (`uv sync`, `uv run`). `pip install` 직접 사용 금지
 - Python 3.13
 - 린트·포맷: `ruff` (`ruff check --fix`, `ruff format`)
-- 타입: `mypy --strict` 대상은 `orbit/ledger`, `orbit/risk`, `orbit/brokers` (돈이 지나가는 경로). 나머지는 기본 검사
+- 타입: `mypy --strict` 대상은 전체 (`strict = true`). 돈이 지나가는 `ledger`·`risk`·`brokers` 에서 `Any`·`type: ignore` 금지
 - 테스트: `pytest`. 돈 경로는 단위 테스트 필수 (→ [money-safety](money-safety.md))
 
 ## 구조
 
 ```
 engine/
-├─ orbit/
+├─ src/orbit/
 │   ├─ strategies/   전략 순수 함수 (I/O 금지)
 │   ├─ indicators/   지표 계산 (pandas)
 │   ├─ backtest/     백테스터 · 성과 지표
 │   ├─ brokers/      거래소 어댑터 (공통 Broker 프로토콜 + upbit / toss / mock)
 │   ├─ ledger/       가상 장부
 │   ├─ risk/         리스크 가드 · 하드 리밋 · 킬 스위치
-│   ├─ data/         캔들 수집 · 캐시
+│   ├─ marketdata/   시세(캔들) 수집 · 저장
 │   ├─ api/          FastAPI (대시보드용, 조회 위주)
 │   ├─ notify/       텔레그램
 │   └─ scheduler.py
