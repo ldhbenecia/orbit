@@ -20,6 +20,8 @@ from orbit.backtest.runs import RunSpec, save_run
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.sync import sync_daily_candles
 from orbit.marketdata.upbit_candles import BASE_URL
+from orbit.marketdata.upbit_ticker import try_fetch_ticker
+from orbit.signals.today import Stance, today_signals
 from orbit.strategies.registry import build_strategy
 
 log = logging.getLogger("orbit")
@@ -42,6 +44,10 @@ def main() -> None:
     serve = commands.add_parser("serve", help="대시보드용 조회 API 실행 (이 기기에서만 접속)")
     serve.add_argument("--db", type=Path, default=DEFAULT_DB)
     serve.add_argument("--port", type=int, default=8000)
+
+    signal = commands.add_parser("signal", help="오늘의 규칙 신호 — 규칙마다 보유·현금·돌파 여부")
+    signal.add_argument("--market", default="KRW-BTC")
+    signal.add_argument("--db", type=Path, default=DEFAULT_DB)
 
     commands.add_parser("openapi", help="API 명세(JSON)를 표준 출력으로 — 웹 타입 생성용")
 
@@ -69,14 +75,17 @@ def main() -> None:
     elif args.command == "serve":
         db = args.db
         # 외부 접속을 막기 위해 루프백에만 바인딩
-        uvicorn.run(create_app(lambda: CandleStore.open(db)), host="127.0.0.1", port=args.port)
+        app = create_app(lambda: sqlite3.connect(db), get_ticker=try_fetch_ticker)
+        uvicorn.run(app, host="127.0.0.1", port=args.port)
     elif args.command == "backtest":
         _backtest(args.market, args.start, args.end, args.monthly, args.db)
     elif args.command == "compare-strategies":
         _compare_strategies(args)
+    elif args.command == "signal":
+        _signal(args.market, args.db)
     elif args.command == "openapi":
         json.dump(
-            create_app(lambda: CandleStore.open(DEFAULT_DB)).openapi(),
+            create_app(lambda: sqlite3.connect(DEFAULT_DB)).openapi(),
             sys.stdout,
             ensure_ascii=False,
             indent=2,
@@ -223,3 +232,30 @@ _ROWS: list[tuple[str, Callable[[Metrics], str]]] = [
     ("수수료", lambda m: _won(m.fees)),
     ("슬리피지 비용", lambda m: _won(m.slippage)),
 ]
+
+
+_STANCE_LABEL = {
+    Stance.HOLD: "보유 구간",
+    Stance.CASH: "현금 구간",
+    Stance.BREAKOUT_WAIT: "돌파 대기",
+    Stance.BREAKOUT_HIT: "돌파함",
+}
+
+
+def _signal(market: str, db: Path) -> None:
+    store = CandleStore.open(db)
+    candles = store.load(market)
+    store.close()
+    if len(candles) < 2:
+        log.error("일봉이 없음 — 먼저 orbit sync-candles 실행")
+        return
+    ticker = try_fetch_ticker(market)
+    price = f"현재가 {ticker.price:,.0f}원" if ticker else "현재가 조회 실패 — 돌파 여부 제외"
+    log.info("%s 규칙 신호 (%s 확정 봉 기준, %s)\n", market, f"{candles[-1].start:%Y-%m-%d}", price)
+    for s in today_signals(candles, ticker):
+        extra = f" · {s.days}일째" if s.days else ""
+        if s.trigger is not None:
+            extra = f" · 기준선 {s.trigger:,.0f}원"
+        log.info("  %-8s %-10s [%s]%s", s.strategy, _STANCE_LABEL[s.stance], s.status, extra)
+        log.info("           %s", s.reason)
+    log.info("\n규칙이 말하는 상태일 뿐 투자 권유가 아님. 실험 중 규칙은 검증 전")

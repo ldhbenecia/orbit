@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from orbit.backtest.engine import DEFAULT_CONFIG, Funding, run_backtest
 from orbit.backtest.metrics import compute_metrics
-from orbit.backtest.runs import RunSpec, save_run
+from orbit.backtest.runs import RunSpec, latest_runs, load_trades, save_run
 from orbit.db.migrations import MIGRATIONS
 from orbit.marketdata.candle import Candle
 from orbit.strategies.registry import build_strategy
@@ -83,3 +83,27 @@ def test_기록_테이블_추가는_기존_일봉을_보존() -> None:
 
     assert conn.execute("SELECT COUNT(*) FROM daily_candles").fetchone() == (1,)
     assert conn.execute("PRAGMA user_version").fetchone() == (len(MIGRATIONS),)
+
+
+def test_전략마다_가장_최근_실행만_목록에() -> None:
+    conn = sqlite3.connect(":memory:")
+    _run(conn)
+    latest = _run(conn)
+
+    runs = latest_runs(conn, "KRW-BTC")
+
+    assert [(r.id, r.strategy) for r in runs] == [(latest, "ma-3")]
+    assert latest_runs(conn, "KRW-ETH") == []
+
+
+def test_저장한_매매를_체결_순서대로_되읽음() -> None:
+    conn = sqlite3.connect(":memory:")
+    prices = candles([(1_000_000, 1_000_000 + i % 4 * 50_000) for i in range(30)])
+    result = run_backtest(prices, build_strategy("ma-3")[0], _spec(prices).funding)
+    run_id = save_run(conn, _spec(prices), compute_metrics(result), result.trades, NOW)
+
+    loaded = load_trades(conn, run_id)
+
+    assert [(t.day, t.side, t.qty, t.price) for t in loaded] == [
+        (t.day, t.side, t.qty, t.price) for t in result.trades
+    ]

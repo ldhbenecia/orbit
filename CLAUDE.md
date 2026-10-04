@@ -100,6 +100,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 투자 법칙·전략·용어는 코드 작성 전에 여기서 확인한다. 사용자는 퀀트 비전문가 — 개념을 쓸 때는 쉬운 말로 설명한다.
 
+- [docs/knowledge/orbit-rules.md](docs/knowledge/orbit-rules.md) — **orbit 이 실제로 쓰는 규칙**·상태·백테스트 결과 (전략·공통 규칙을 바꾸면 같이 갱신)
 - [docs/knowledge/strategies.md](docs/knowledge/strategies.md) — 알려진 투자 규칙·전략 카탈로그 (근거 수준·구현 난이도)
 - [docs/knowledge/risk-management.md](docs/knowledge/risk-management.md) — 자금·리스크 관리 규칙
 - [docs/knowledge/backtest-pitfalls.md](docs/knowledge/backtest-pitfalls.md) — 백테스트 함정

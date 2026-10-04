@@ -22,4 +22,5 @@ $ARGUMENTS — 전략 이름 또는 설명 (예: `이동평균 필터 120일`, `
 5. **구현** — `engine/orbit/strategies/<name>.py` 순수 함수. I/O·`now()`·랜덤 금지, 금액 결정 금지 (→ [strategy-rules](../../rules/strategy-rules.md))
 6. **백테스트 등록** — 전략 레지스트리에 추가, 기준선(단순 보유·적립식)과 함께 돌려지는지 확인
 7. **검증** — `uv run pytest`, `uv run ruff check`, `uv run mypy` 결과를 그대로 보고
-8. **다음** — 결과 해석은 `backtest-review` 스킬로. 용어가 새로 나왔으면 glossary 갱신
+8. **문서** — [docs/knowledge/orbit-rules.md](../../../docs/knowledge/orbit-rules.md) 에 규칙·출처·파라미터·약점·상태(실험 중) 추가
+9. **다음** — 결과 해석은 `backtest-review` 스킬로. 용어가 새로 나왔으면 glossary 갱신

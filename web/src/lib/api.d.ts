@@ -21,6 +21,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/signals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Signals */
+        get: operations["signals_signals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backtests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Backtests */
+        get: operations["backtests_backtests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backtests/{run_id}/trades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Backtest Trades */
+        get: operations["backtest_trades_backtests__run_id__trades_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -53,6 +104,86 @@ export interface components {
          * @enum {string}
          */
         Interval: "day" | "week" | "month";
+        /** RunOut */
+        RunOut: {
+            /** Id */
+            id: number;
+            /** Strategy */
+            strategy: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Code Version */
+            code_version: string;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Cagr */
+            cagr: string;
+            /** Mdd */
+            mdd: string;
+            /** Trades */
+            trades: number;
+        };
+        /** SignalOut */
+        SignalOut: {
+            /** Strategy */
+            strategy: string;
+            /** Status */
+            status: string;
+            stance: components["schemas"]["Stance"];
+            /** Reason */
+            reason: string;
+            /** Days */
+            days: number | null;
+            /** Trigger */
+            trigger: string | null;
+        };
+        /** SignalsOut */
+        SignalsOut: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Price */
+            price: string | null;
+            /** Signals */
+            signals: components["schemas"]["SignalOut"][];
+        };
+        /**
+         * Stance
+         * @enum {string}
+         */
+        Stance: "hold" | "cash" | "breakout_wait" | "breakout_hit";
+        /** TradeOut */
+        TradeOut: {
+            /**
+             * Day
+             * Format: date-time
+             */
+            day: string;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "buy" | "sell";
+            /** Qty */
+            qty: string;
+            /** Price */
+            price: string;
+            /** Reason */
+            reason: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -94,6 +225,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CandleOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    signals_signals_get: {
+        parameters: {
+            query?: {
+                market?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backtests_backtests_get: {
+        parameters: {
+            query?: {
+                market?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backtest_trades_backtests__run_id__trades_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeOut"][];
                 };
             };
             /** @description Validation Error */
