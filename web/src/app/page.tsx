@@ -4,34 +4,21 @@ import { PriceView } from "@/components/price-view";
 import { SignalCard } from "@/components/signal-card";
 import type { components } from "@/lib/api";
 import { type CandleOut, type Interval, toChartCandle } from "@/lib/candles";
+import { engineJson } from "@/lib/engine";
 
-const API_URL = process.env.ORBIT_API_URL ?? "http://127.0.0.1:8000";
 const MARKET = "KRW-BTC";
 
-async function loadJson<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(`${API_URL}${path}`);
-    if (!res.ok) {
-      console.error(`엔진 API ${path} 응답 ${res.status}`);
-      return null;
-    }
-    return (await res.json()) as T;
-  } catch (error) {
-    console.error(`엔진 API ${path} 요청 실패`, error);
-    return null;
-  }
-}
-
 const loadCandles = (interval: Interval) =>
-  loadJson<CandleOut[]>(`/candles?market=${MARKET}&interval=${interval}`);
+  engineJson<CandleOut[]>(`/candles?market=${MARKET}&interval=${interval}`);
 
 export default async function Page() {
   await connection();
-  const [day, week, month, signals] = await Promise.all([
+  const [day, week, month, signals, runs] = await Promise.all([
     loadCandles("day"),
     loadCandles("week"),
     loadCandles("month"),
-    loadJson<components["schemas"]["SignalsOut"]>(`/signals?market=${MARKET}`),
+    engineJson<components["schemas"]["SignalsOut"]>(`/signals?market=${MARKET}`),
+    engineJson<components["schemas"]["RunOut"][]>(`/backtests?market=${MARKET}`),
   ]);
   const candles = day && week && month ? day : null;
 
@@ -46,6 +33,7 @@ export default async function Page() {
           {signals && <SignalCard data={signals} />}
           <PriceView
             market={MARKET}
+            runs={runs ?? []}
             daily={candles.map(toChartCandle)}
             byInterval={{
               day: candles.map(toChartCandle),

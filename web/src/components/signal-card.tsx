@@ -1,5 +1,6 @@
 import type { components } from "@/lib/api";
 import { formatDate, formatWon } from "@/lib/format";
+import { ruleName } from "@/lib/rules";
 
 type Signals = components["schemas"]["SignalsOut"];
 type Signal = components["schemas"]["SignalOut"];
@@ -10,13 +11,6 @@ const STANCE: Record<Stance, { label: string; tone: string; buySide: boolean }> 
   cash: { label: "현금 구간", tone: "text-down", buySide: false },
   breakout_hit: { label: "오늘 돌파함", tone: "text-up", buySide: true },
   breakout_wait: { label: "돌파 대기", tone: "text-muted", buySide: false },
-};
-
-const ruleName = (spec: string) => {
-  const [name, arg] = spec.split("-");
-  if (name === "ma") return `${arg}일선 규칙`;
-  if (name === "vb") return `변동성 돌파 (k ${arg})`;
-  return spec;
 };
 
 export function SignalCard({ data }: { data: Signals }) {

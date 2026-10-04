@@ -2,15 +2,29 @@
 
 import { useMemo, useState } from "react";
 
-import { CandleChart } from "@/components/candle-chart";
+import { CandleChart, type ChartMarker } from "@/components/candle-chart";
+import type { components } from "@/lib/api";
 import type { ChartCandle, Interval } from "@/lib/candles";
 import { formatDate, formatPercent, formatSignedWon, formatWon } from "@/lib/format";
+import { ruleName } from "@/lib/rules";
+import { type ChartTrade, groupByBar, toChartTrade } from "@/lib/trades";
+
+type Run = components["schemas"]["RunOut"];
+type TradesState = ChartTrade[] | "loading" | "error";
 
 const INTERVALS: { value: Interval; label: string; initialBars: number | null }[] = [
   { value: "day", label: "일", initialBars: 90 },
   { value: "week", label: "주", initialBars: 78 },
   { value: "month", label: "월", initialBars: null },
 ];
+
+// 단순 보유 → 이동평균(짧은 순) → 변동성 돌파
+const RULE_ORDER = ["hold", "ma", "vb"];
+const byRuleOrder = (a: Run, b: Run) => {
+  const [an, ap] = a.strategy.split("-");
+  const [bn, bp] = b.strategy.split("-");
+  return RULE_ORDER.indexOf(an) - RULE_ORDER.indexOf(bn) || Number(ap ?? 0) - Number(bp ?? 0);
+};
 
 const tone = (value: number) => (value > 0 ? "text-up" : value < 0 ? "text-down" : "text-muted");
 
@@ -21,12 +35,15 @@ const barLabel = (day: string, interval: Interval) => {
 
 type Props = {
   market: string;
+  runs: Run[];
   daily: ChartCandle[];
   byInterval: Record<Interval, ChartCandle[]>;
 };
 
-export function PriceView({ market, daily, byInterval }: Props) {
+export function PriceView({ market, runs, daily, byInterval }: Props) {
   const [interval, setInterval] = useState<Interval>("day");
+  const [runId, setRunId] = useState<number | null>(null);
+  const [tradesByRun, setTradesByRun] = useState<Record<number, TradesState>>({});
   // 막대 위치는 단위마다 다름 — 어느 단위의 위치인지 같이 저장해 단위를 바꾼 직후 옛 위치를 쓰지 않음
   const [visibleState, setVisible] = useState<{ interval: Interval; from: number; to: number } | null>(null);
   const [hoverState, setHover] = useState<{ interval: Interval; index: number } | null>(null);
@@ -42,6 +59,38 @@ export function PriceView({ market, daily, byInterval }: Props) {
 
   const legend = candles[hover ?? candles.length - 1];
   const legendChange = legend.close - legend.open;
+
+  const run = runs.find((r) => r.id === runId) ?? null;
+  const tradesState = runId === null ? null : (tradesByRun[runId] ?? "loading");
+  const bars = useMemo(
+    () => (Array.isArray(tradesState) ? groupByBar(tradesState, interval) : new Map()),
+    [tradesState, interval],
+  );
+  const markers = useMemo<ChartMarker[]>(
+    () =>
+      [...bars.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .flatMap(([day, bar]) => [
+          ...(bar.buys.length ? [{ day, side: "buy" as const, count: bar.buys.length }] : []),
+          ...(bar.sells.length ? [{ day, side: "sell" as const, count: bar.sells.length }] : []),
+        ]),
+    [bars],
+  );
+  const legendTrades = bars.get(legend.day);
+
+  const selectRun = async (id: number | null) => {
+    setRunId(id);
+    if (id === null || Array.isArray(tradesByRun[id])) return;
+    setTradesByRun((prev) => ({ ...prev, [id]: "loading" }));
+    try {
+      const res = await fetch(`/api/backtests/${id}/trades`);
+      if (!res.ok) throw new Error(String(res.status));
+      const trades = (await res.json()) as components["schemas"]["TradeOut"][];
+      setTradesByRun((prev) => ({ ...prev, [id]: trades.map(toChartTrade) }));
+    } catch {
+      setTradesByRun((prev) => ({ ...prev, [id]: "error" }));
+    }
+  };
 
   const stats = useMemo(() => {
     if (!visible) return null;
@@ -68,7 +117,7 @@ export function PriceView({ market, daily, byInterval }: Props) {
       </section>
 
       <section className="space-y-3">
-        <div className="flex items-center">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 rounded-xl bg-subtle p-1" role="tablist" aria-label="막대 단위">
             {INTERVALS.map((o) => (
               <button
@@ -85,7 +134,34 @@ export function PriceView({ market, daily, byInterval }: Props) {
               </button>
             ))}
           </div>
+          {runs.length > 0 && (
+            <label className="flex items-center gap-2 text-sm text-muted">
+              매매 표시
+              <select
+                value={runId ?? ""}
+                onChange={(e) => selectRun(e.target.value ? Number(e.target.value) : null)}
+                className="rounded-lg bg-subtle px-2 py-1.5 text-sm text-foreground"
+              >
+                <option value="">표시 안 함</option>
+                {[...runs].sort(byRuleOrder).map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {`${ruleName(r.strategy)} 백테스트`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
+
+        {run && (
+          <p className="text-xs text-muted">
+            {tradesState === "loading"
+              ? "매매 기록을 불러오는 중"
+              : tradesState === "error"
+                ? "매매 기록을 불러오지 못했어요"
+                : `${ruleName(run.strategy)} 백테스트 ${formatDate(run.start.slice(0, 10))} ~ ${formatDate(run.end.slice(0, 10))} · 매매 ${run.trades.toLocaleString("ko-KR")}건 · 코드 ${run.code_version} · 실제 거래가 아니에요`}
+          </p>
+        )}
 
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs tabular-nums">
           <span className="font-medium">{barLabel(legend.day, interval)}</span>
@@ -103,8 +179,22 @@ export function PriceView({ market, daily, byInterval }: Props) {
           </span>
         </div>
 
+        {legendTrades && (
+          <ul className="space-y-0.5 text-xs">
+            {[...legendTrades.buys, ...legendTrades.sells].map((t, i) => (
+              <li key={i} className="text-muted">
+                <span className={t.side === "buy" ? "text-up" : "text-down"}>
+                  {t.side === "buy" ? "매수" : "매도"} {formatWon(t.price)}
+                </span>{" "}
+                · {t.reason}
+              </li>
+            ))}
+          </ul>
+        )}
+
         <CandleChart
           candles={candles}
+          markers={markers}
           initialBars={option.initialBars}
           onVisibleChange={(from, to) => setVisible({ interval, from, to })}
           onHover={(index) => setHover(index === null ? null : { interval, index })}
