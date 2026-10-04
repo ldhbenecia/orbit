@@ -49,5 +49,6 @@ def test_저장한_가격은_Decimal_그대로_되읽힘() -> None:
 
     candle = store.load("KRW-BTC")[0]
 
-    assert str(candle.close) == "100000000.0"
+    assert str(candle.close) == "100000000"
+    assert str(candle.volume) == "12.50000000"
     assert candle.start.tzinfo is not None

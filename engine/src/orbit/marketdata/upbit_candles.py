@@ -29,7 +29,6 @@ def _to_candle(row: dict[str, Any]) -> Candle:
         low=Decimal(row["low_price"]),
         close=Decimal(row["trade_price"]),
         volume=Decimal(row["candle_acc_trade_volume"]),
-        value=Decimal(row["candle_acc_trade_price"]),
     )
 
 

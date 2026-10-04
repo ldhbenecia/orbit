@@ -16,7 +16,6 @@ class CandleOut(BaseModel):
     low: Decimal
     close: Decimal
     volume: Decimal
-    value: Decimal
 
 
 def create_app(open_store: Callable[[], CandleStore]) -> FastAPI:
@@ -42,7 +41,6 @@ def create_app(open_store: Callable[[], CandleStore]) -> FastAPI:
                 low=c.low,
                 close=c.close,
                 volume=c.volume,
-                value=c.value,
             )
             for c in store.load(market)
         ]

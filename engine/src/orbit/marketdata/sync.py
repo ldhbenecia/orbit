@@ -33,7 +33,7 @@ def sync_daily_candles(
     since = store.latest_start(market) or EARLIEST
     fetched = fetch_daily_candles(client, market, since, sleep)
     closed = [c for c in fetched if c.is_closed(now)]
-    store.upsert(closed)
+    store.upsert(closed, fetched_at=now)
 
     starts = [c.start for c in store.load(market)]
     return SyncResult(
