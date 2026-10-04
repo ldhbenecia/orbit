@@ -198,3 +198,29 @@ def test_적립식_분석(tmp_path: Path) -> None:
     assert body["months"] == 6  # 1~6월 — 데이터가 7-17 에서 끝나 7월 적립일은 아직
     assert [p["window"] for p in body["positions"]] == [60, 120]
     assert Decimal(body["return_on_invested"]) > 0  # 계속 오르는 가격
+
+
+def test_일봉이_추가되거나_고쳐지면_캐시를_쓰지_않고_새로_읽음(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    store = CandleStore.open(db)
+    store.upsert([Candle("KRW-BTC", D, *(Decimal(v) for v in ("1", "1", "1", "100", "1")))], D)
+    client = TestClient(create_app(lambda: sqlite3.connect(db)))
+    assert [c["close"] for c in client.get("/candles").json()] == ["100"]
+
+    # 같은 봉을 다시 받아 값만 바뀜 — 봉 개수·마지막 봉은 그대로
+    store.upsert(
+        [Candle("KRW-BTC", D, *(Decimal(v) for v in ("1", "1", "1", "200", "1")))],
+        D + timedelta(hours=1),
+    )
+    assert [c["close"] for c in client.get("/candles").json()] == ["200"]
+
+    store.upsert(
+        [
+            Candle(
+                "KRW-BTC", D + timedelta(days=1), *(Decimal(v) for v in ("1", "1", "1", "300", "1"))
+            )
+        ],
+        D + timedelta(hours=2),
+    )
+    assert [c["close"] for c in client.get("/candles").json()] == ["200", "300"]
+    store.close()

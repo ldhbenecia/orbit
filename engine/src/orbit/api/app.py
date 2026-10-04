@@ -120,12 +120,21 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="orbit", docs_url=None, redoc_url=None)
 
+    # 전 기간 일봉을 Decimal 로 바꾸는 게 요청 비용 대부분 — DB 가 그대로면 읽어 둔 걸 씀
+    cache: dict[str, tuple[tuple[int, int | None], list[Candle]]] = {}
+
     def load_candles(market: str) -> list[Candle]:
         # sqlite 연결은 만든 스레드에서만 쓸 수 있음 — 의존성으로 열면 FastAPI 가
         # 의존성과 핸들러를 다른 작업 스레드에서 돌릴 수 있어 동시 요청 시 깨짐
         conn = connect()
         try:
-            return CandleStore(conn).load(market)
+            store = CandleStore(conn)
+            version = store.version(market)
+            cached = cache.get(market)
+            if cached is None or cached[0] != version:
+                cached = (version, store.load(market))
+                cache[market] = cached
+            return list(cached[1])
         finally:
             conn.close()
 
