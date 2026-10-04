@@ -1,30 +1,38 @@
 import { connection } from "next/server";
 
 import { PriceView } from "@/components/price-view";
+import { SignalCard } from "@/components/signal-card";
+import type { components } from "@/lib/api";
 import { type CandleOut, type Interval, toChartCandle } from "@/lib/candles";
 
 const API_URL = process.env.ORBIT_API_URL ?? "http://127.0.0.1:8000";
 const MARKET = "KRW-BTC";
 
-async function loadCandles(interval: Interval): Promise<CandleOut[] | null> {
+async function loadJson<T>(path: string): Promise<T | null> {
   try {
-    const res = await fetch(`${API_URL}/candles?market=${MARKET}&interval=${interval}`);
+    const res = await fetch(`${API_URL}${path}`);
     if (!res.ok) {
-      console.error(`엔진 API ${interval} 응답 ${res.status}`);
+      console.error(`엔진 API ${path} 응답 ${res.status}`);
       return null;
     }
-    return (await res.json()) as CandleOut[];
+    return (await res.json()) as T;
   } catch (error) {
-    console.error(`엔진 API ${interval} 요청 실패`, error);
+    console.error(`엔진 API ${path} 요청 실패`, error);
     return null;
   }
 }
 
+const loadCandles = (interval: Interval) =>
+  loadJson<CandleOut[]>(`/candles?market=${MARKET}&interval=${interval}`);
+
 export default async function Page() {
   await connection();
-  const [day, week, month] = await Promise.all(
-    (["day", "week", "month"] as const).map(loadCandles),
-  );
+  const [day, week, month, signals] = await Promise.all([
+    loadCandles("day"),
+    loadCandles("week"),
+    loadCandles("month"),
+    loadJson<components["schemas"]["SignalsOut"]>(`/signals?market=${MARKET}`),
+  ]);
   const candles = day && week && month ? day : null;
 
   return (
@@ -34,15 +42,18 @@ export default async function Page() {
       ) : candles.length < 2 ? (
         <Notice title="아직 받은 일봉이 없어요" command="uv run --project engine orbit sync-candles" />
       ) : (
-        <PriceView
-          market={MARKET}
-          daily={candles.map(toChartCandle)}
-          byInterval={{
-            day: candles.map(toChartCandle),
-            week: week!.map(toChartCandle),
-            month: month!.map(toChartCandle),
-          }}
-        />
+        <div className="space-y-10">
+          {signals && <SignalCard data={signals} />}
+          <PriceView
+            market={MARKET}
+            daily={candles.map(toChartCandle)}
+            byInterval={{
+              day: candles.map(toChartCandle),
+              week: week!.map(toChartCandle),
+              month: month!.map(toChartCandle),
+            }}
+          />
+        </div>
       )}
     </main>
   );
