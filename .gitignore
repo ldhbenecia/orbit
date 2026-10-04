@@ -1,0 +1,48 @@
+# secrets — 키·계좌 정보는 어떤 형태로도 커밋 금지
+.env
+.env.*
+!.env.example
+config/*.local.yaml
+
+# 개인 거래 데이터 — 잔고·주문·체결·백테스트 산출물
+data/
+*.sqlite
+*.sqlite3
+*.db
+reports/
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# logs
+*.log
+logs/
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code 머신별 설정 (.claude/settings.json 은 커밋)
+.claude/settings.local.json
+.claude/worktrees/
+
+# 내부 문서 — 로컬 전용 (금액·매매 내역·개인 정책 포함 가능)
+# 공개 유지: CLAUDE.md, .claude/, docs/knowledge/
+docs/decisions/
+docs/plans/
+docs/progress/
+docs/incidents/
+docs/policy/
