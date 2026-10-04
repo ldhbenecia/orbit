@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CandleChart, type ChartMarker } from "@/components/candle-chart";
 import { SegmentedControl } from "@/components/segmented-control";
 import type { components } from "@/lib/api";
-import type { ChartCandle, Interval } from "@/lib/candles";
+import { type CandleOut, type ChartCandle, type Interval, toChartCandle } from "@/lib/candles";
 import { formatDate, formatPercent, formatPrice, formatSignedPrice } from "@/lib/format";
 import type { MarketInfo } from "@/lib/markets";
 import { ruleName } from "@/lib/rules";
@@ -13,6 +13,15 @@ import { type ChartTrade, groupByBar, toChartTrade } from "@/lib/trades";
 
 type Run = components["schemas"]["RunOut"];
 type TradesState = ChartTrade[] | "loading" | "error";
+type Series = { candles: ChartCandle[]; complete: boolean }; // complete — 처음부터 끝까지 다 받았는지
+
+const LOAD_OLDER_MARGIN = 20; // 보이는 구간이 받은 일봉 왼쪽 끝에서 이만큼 안으로 오면 나머지를 받음
+
+async function fetchCandles(market: string, interval: Interval): Promise<ChartCandle[]> {
+  const res = await fetch(`/api/candles?market=${market}&interval=${interval}`);
+  if (!res.ok) throw new Error(String(res.status));
+  return ((await res.json()) as CandleOut[]).map(toChartCandle);
+}
 
 const INTERVALS: { value: Interval; label: string; initialBars: number | null }[] = [
   { value: "day", label: "일", initialBars: 90 },
@@ -38,23 +47,35 @@ const barLabel = (day: string, interval: Interval) => {
 type Props = {
   info: MarketInfo;
   runs: Run[];
-  daily: ChartCandle[];
-  byInterval: Record<Interval, ChartCandle[]>;
+  recentDaily: ChartCandle[]; // 처음 화면용 최근 일봉
+  dailyCount: number; // 전체 일봉 개수
+  firstDay: string; // 전체 데이터 첫날
 };
 
-export function PriceView({ info, runs, daily, byInterval }: Props) {
+export function PriceView({ info, runs, recentDaily, dailyCount, firstDay }: Props) {
   const price = (value: number) => formatPrice(value, info.currency);
+  const [series, setSeries] = useState<Partial<Record<Interval, Series>>>({
+    day: { candles: recentDaily, complete: recentDaily.length >= dailyCount },
+  });
+  // 탭은 누르자마자 바뀌고(requested) 차트는 데이터가 오면 바뀜(interval)
   const [interval, setInterval] = useState<Interval>("day");
+  const [requested, setRequested] = useState<Interval>("day");
+  const latestRequest = useRef<Interval>("day");
+  const [loadError, setLoadError] = useState(false);
+  const loadingOlder = useRef(false);
   const [runId, setRunId] = useState<number | null>(null);
   const [tradesByRun, setTradesByRun] = useState<Record<number, TradesState>>({});
   // 막대 위치는 단위마다 다름 — 어느 단위의 위치인지 같이 저장해 단위를 바꾼 직후 옛 위치를 쓰지 않음
   const [visibleState, setVisible] = useState<{ interval: Interval; from: number; to: number } | null>(null);
-  const [hoverState, setHover] = useState<{ interval: Interval; index: number } | null>(null);
+  const [hoverState, setHover] = useState<{ interval: Interval; length: number; index: number } | null>(null);
 
-  const candles = byInterval[interval];
+  const daily = series.day!.candles;
+  const candles = series[interval]!.candles;
   const option = INTERVALS.find((o) => o.value === interval)!;
   const visible = visibleState?.interval === interval ? visibleState : null;
-  const hover = hoverState?.interval === interval ? hoverState.index : null;
+  // 과거 일봉을 앞에 붙이면 인덱스가 밀림 — 길이까지 같을 때만 호버 위치를 믿음
+  const hover =
+    hoverState?.interval === interval && hoverState.length === candles.length ? hoverState.index : null;
 
   const last = daily[daily.length - 1];
   const prev = daily[daily.length - 2];
@@ -86,6 +107,40 @@ export function PriceView({ info, runs, daily, byInterval }: Props) {
         .join(" / ")
     : null;
 
+
+  const selectInterval = async (next: Interval) => {
+    setRequested(next);
+    latestRequest.current = next;
+    setLoadError(false);
+    if (series[next]) {
+      setInterval(next);
+      return;
+    }
+    try {
+      const loaded = await fetchCandles(info.market, next);
+      setSeries((prev) => ({ ...prev, [next]: { candles: loaded, complete: true } }));
+      // 빠르게 연달아 누르면 마지막으로 누른 단위만 화면에 반영
+      if (latestRequest.current === next) setInterval(next);
+    } catch {
+      if (latestRequest.current === next) {
+        setRequested(interval);
+        setLoadError(true);
+      }
+    }
+  };
+
+  // 과거로 밀어 받은 일봉의 왼쪽 끝에 가까워지면 나머지 일봉을 받아 앞에 붙임
+  useEffect(() => {
+    if (interval !== "day" || !visible || series.day!.complete || loadingOlder.current) return;
+    if (visible.from > LOAD_OLDER_MARGIN) return;
+    loadingOlder.current = true;
+    fetchCandles(info.market, "day")
+      .then((all) => setSeries((prev) => ({ ...prev, day: { candles: all, complete: true } })))
+      .catch(() => setLoadError(true))
+      .finally(() => {
+        loadingOlder.current = false;
+      });
+  }, [interval, visible, series.day, info.market]);
 
   const selectRun = async (id: number | null) => {
     setRunId(id);
@@ -132,8 +187,8 @@ export function PriceView({ info, runs, daily, byInterval }: Props) {
           <SegmentedControl
             label="막대 단위"
             options={INTERVALS}
-            value={interval}
-            onChange={setInterval}
+            value={requested}
+            onChange={selectInterval}
             className="w-40"
           />
           {runs.length > 0 && (
@@ -191,14 +246,19 @@ export function PriceView({ info, runs, daily, byInterval }: Props) {
           </p>
         )}
 
-        <CandleChart
-          currency={info.currency}
-          candles={candles}
-          markers={markers}
-          initialBars={option.initialBars}
-          onVisibleChange={(from, to) => setVisible({ interval, from, to })}
-          onHover={(index) => setHover(index === null ? null : { interval, index })}
-        />
+        {loadError && <p className="text-xs text-down">차트 데이터를 불러오지 못했어요. 다시 눌러 주세요.</p>}
+
+        <div className={`transition-opacity duration-200 ${requested !== interval ? "opacity-50" : ""}`}>
+          <CandleChart
+            currency={info.currency}
+            resetKey={interval}
+            candles={candles}
+            markers={markers}
+            initialBars={option.initialBars}
+            onVisibleChange={(from, to) => setVisible({ interval, from, to })}
+            onHover={(index) => setHover(index === null ? null : { interval, length: candles.length, index })}
+          />
+        </div>
       </section>
 
       {stats && (
@@ -215,7 +275,7 @@ export function PriceView({ info, runs, daily, byInterval }: Props) {
       )}
 
       <p className="text-xs leading-relaxed text-muted">
-        {info.source} 시세 {formatDate(daily[0].day)}부터 {formatDate(last.day)}까지. 거래일이 끝나 확정된 봉만
+        {info.source} 시세 {formatDate(firstDay)}부터 {formatDate(last.day)}까지 {dailyCount.toLocaleString("ko-KR")}일. 거래일이 끝나 확정된 봉만
         보여주고, 아직 진행 중인 봉은 빼요. 주봉·월봉은 월요일·1일 시작 기준으로 일봉을 묶어요.
       </p>
     </div>

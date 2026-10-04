@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/candles/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Candles Summary */
+        get: operations["candles_summary_candles_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/signals": {
         parameters: {
             query?: never;
@@ -93,6 +110,21 @@ export interface components {
             close: string;
             /** Volume */
             volume: string;
+        };
+        /** CandlesSummaryOut */
+        CandlesSummaryOut: {
+            /**
+             * First
+             * Format: date-time
+             */
+            first: string;
+            /**
+             * Last
+             * Format: date-time
+             */
+            last: string;
+            /** Count */
+            count: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -211,6 +243,7 @@ export interface operations {
             query?: {
                 market?: string;
                 interval?: components["schemas"]["Interval"];
+                limit?: number | null;
             };
             header?: never;
             path?: never;
@@ -225,6 +258,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CandleOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    candles_summary_candles_summary_get: {
+        parameters: {
+            query?: {
+                market?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandlesSummaryOut"] | null;
                 };
             };
             /** @description Validation Error */
