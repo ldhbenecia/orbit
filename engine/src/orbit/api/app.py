@@ -5,6 +5,7 @@ from decimal import Decimal
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from orbit.marketdata.aggregate import Interval, aggregate
 from orbit.marketdata.store import CandleStore
 
 
@@ -21,7 +22,7 @@ def create_app(open_store: Callable[[], CandleStore]) -> FastAPI:
     app = FastAPI(title="orbit", docs_url=None, redoc_url=None)
 
     @app.get("/candles")
-    def candles(market: str = "KRW-BTC") -> list[CandleOut]:
+    def candles(market: str = "KRW-BTC", interval: Interval = Interval.DAY) -> list[CandleOut]:
         # sqlite 연결은 만든 스레드에서만 쓸 수 있음 — 의존성으로 열면 FastAPI 가
         # 의존성과 핸들러를 다른 작업 스레드에서 돌릴 수 있어 동시 요청 시 깨짐
         store = open_store()
@@ -38,7 +39,7 @@ def create_app(open_store: Callable[[], CandleStore]) -> FastAPI:
                 close=c.close,
                 volume=c.volume,
             )
-            for c in loaded
+            for c in aggregate(loaded, interval)
         ]
 
     return app

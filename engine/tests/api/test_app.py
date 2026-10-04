@@ -44,6 +44,16 @@ def test_가격은_문자열로_내보내_정밀도_유지(tmp_path: Path) -> No
     assert body[0]["volume"] == "0.50000000"
 
 
+def test_막대_단위를_고르면_묶어서_돌려줌(tmp_path: Path) -> None:
+    body = _client(tmp_path).get("/candles", params={"interval": "month"}).json()
+
+    assert body[0]["start"] == "2024-01-01T00:00:00Z"
+
+
+def test_모르는_막대_단위는_거부(tmp_path: Path) -> None:
+    assert _client(tmp_path).get("/candles", params={"interval": "minute"}).status_code == 422
+
+
 def test_실서버_동시_요청에도_DB_연결이_스레드를_넘지_않음(tmp_path: Path) -> None:
     # TestClient 는 요청마다 루프를 새로 만들어 재현 안 됨 — 실제 uvicorn 한 루프에 동시 요청
     db = tmp_path / "orbit.sqlite"
@@ -63,8 +73,8 @@ def test_실서버_동시_요청에도_DB_연결이_스레드를_넘지_않음(t
         ):
             codes = list(
                 pool.map(
-                    lambda iv: http.get("/candles", params={"market": iv}).status_code,
-                    ["KRW-BTC", "KRW-ETH", "KRW-BTC"] * 50,
+                    lambda iv: http.get("/candles", params={"interval": iv}).status_code,
+                    ["day", "week", "month"] * 50,
                 )
             )
     finally:
