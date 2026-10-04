@@ -6,6 +6,7 @@
 - 타입 검사: `pnpm typecheck` (`next typegen` 후 `tsc` — `PageProps`·`RouteContext` 같은 전역 타입이 생성돼야 함)
 - 포맷 도구 설정이 없음 — prettier 등을 돌리지 않음 (손댄 줄 밖까지 줄바꿈이 바뀜)
 - 엔진 API 는 루프백 전용 — 브라우저는 Next 라우트(`src/app/api/`)를 거쳐 받음
+- README 캡처는 **가상 데이터로만** — 거래소 약관상 실제 시세를 공개할 수 없음. `uv run --project engine orbit demo-data` → `uv run --project engine orbit serve --demo --db data/demo.sqlite` + `NEXT_PUBLIC_ORBIT_DEMO=1 pnpm dev`, headless Chrome `--force-device-scale-factor=2`
 
 <!-- BEGIN:nextjs-agent-rules -->
 
