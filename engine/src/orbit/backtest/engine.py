@@ -43,7 +43,7 @@ DEFAULT_CONFIG = BacktestConfig()
 @dataclass(frozen=True, slots=True)
 class Trade:
     day: datetime
-    side: str  # "buy" | "sell"
+    side: Literal["buy", "sell"]
     qty: Decimal
     price: Decimal  # 슬리피지·호가 단위 반영 체결가
     fee: Decimal
@@ -101,7 +101,7 @@ def run_backtest(
             if today.high >= trigger:
                 orders.append((trigger, entry.weight, entry.reason))
         for price, weight, reason in orders:
-            trade = _rebalance(today.start, price, cash, qty, weight, reason, config)
+            trade = rebalance_order(today.start, price, cash, qty, weight, reason, config)
             if trade is None:
                 continue
             result.trades.append(trade)
@@ -136,7 +136,7 @@ def _deposit(funding: Funding, candles: Sequence[Candle], i: int) -> Decimal:
     return amount
 
 
-def _rebalance(
+def rebalance_order(
     day: datetime,
     price: Decimal,
     cash: Decimal,
