@@ -16,6 +16,7 @@ from orbit.backtest.validate import latest_checks
 from orbit.dca.plan import next_payday, run_dca
 from orbit.estimate.live import NEXT_OPEN_BASKETS, NextOpenView
 from orbit.indicators.moving_average import sma
+from orbit.ledger.book import Ledger
 from orbit.marketdata.aggregate import Interval, aggregate
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.instruments import SEOUL
@@ -144,6 +145,34 @@ class RuleChecksOut(BaseModel):
     created_at: datetime
     code_version: str
     rows: list[RuleCheckOut]
+
+
+class WalletFillOut(BaseModel):
+    at: datetime  # 기록 시각, UTC
+    side: Literal["buy", "sell"]
+    qty: Decimal
+    price: Decimal
+    fee: Decimal
+    reason: str  # 그날 판단 근거
+
+
+class WalletSlotOut(BaseModel):
+    slot: str  # 규칙 칸 (종목:규칙)
+    market: str
+    strategy: str
+    budget: Decimal  # 배정 예산 (원)
+    cash: Decimal
+    qty: Decimal  # 엔진이 산 수량
+    cost: Decimal  # 보유분 매수 원가 (수수료 포함)
+    realized: Decimal  # 실현 손익
+    close: Decimal | None  # 평가에 쓴 마지막 확정 종가
+    value: Decimal  # 현금 + 보유 × 종가
+    fills: list[WalletFillOut]
+
+
+class WalletOut(BaseModel):
+    mode: Literal["dry-run"]  # 실주문 없음 — 장부에만 기록
+    slots: list[WalletSlotOut]
 
 
 log = logging.getLogger(__name__)
@@ -358,6 +387,46 @@ def create_app(
                 for r in saved.rows
             ],
         )
+
+    @app.get("/wallet")
+    def wallet() -> WalletOut:
+        # 규칙대로 사고팔았다면의 가상 장부 — 계좌가 아니라 엔진 기록
+        conn = connect()
+        try:
+            ledger = Ledger(conn, "dry-run")
+            slots = []
+            for slot, market in ledger.slots():
+                state = ledger.state(slot, market)
+                candles = load_candles(market)
+                close = candles[-1].close if candles else None
+                slots.append(
+                    WalletSlotOut(
+                        slot=slot,
+                        market=market,
+                        strategy=slot.split(":", 1)[1],
+                        budget=state.budget,
+                        cash=state.cash,
+                        qty=state.qty,
+                        cost=state.cost,
+                        realized=state.realized,
+                        close=close,
+                        value=state.cash + state.qty * (close or Decimal(0)),
+                        fills=[
+                            WalletFillOut(
+                                at=at,
+                                side=fill.side,
+                                qty=fill.qty,
+                                price=fill.price,
+                                fee=fill.fee,
+                                reason=reason,
+                            )
+                            for at, fill, reason in ledger.recent_fills(slot)
+                        ],
+                    )
+                )
+        finally:
+            conn.close()
+        return WalletOut(mode="dry-run", slots=slots)
 
     @app.get("/backtests")
     def backtests(market: str = "KRW-BTC") -> list[RunOut]:
