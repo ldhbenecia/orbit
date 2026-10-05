@@ -73,6 +73,39 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (market, created_ts, strategy, period)
     ) STRICT, WITHOUT ROWID;
     """,
+    # 4: 가상 장부 — 규칙 칸(slot)마다 예산과 엔진이 산 수량만. 금액은 원, 수량은 × 10^8 정수
+    """
+    CREATE TABLE ledger_events (
+        id INTEGER PRIMARY KEY,
+        ts INTEGER NOT NULL,                -- 기록 시각, epoch 초 (UTC)
+        mode TEXT NOT NULL CHECK (mode IN ('dry-run', 'live')),
+        slot TEXT NOT NULL,                 -- 규칙 칸 (예: KRW-BTC:ma-120)
+        kind TEXT NOT NULL CHECK (kind IN ('budget', 'fill')),
+        market TEXT NOT NULL,
+        client_order_id TEXT UNIQUE,        -- fill 만 — 같은 주문이 두 번 기록되지 않게
+        side TEXT CHECK (side IN ('buy', 'sell')),
+        qty INTEGER NOT NULL DEFAULT 0,     -- 코인 수량 × 10^8
+        price_krw INTEGER NOT NULL DEFAULT 0,
+        fee_krw INTEGER NOT NULL DEFAULT 0, -- 원 단위 올림 (실제보다 불리하게)
+        budget_krw INTEGER NOT NULL DEFAULT 0, -- budget 만 — 이 칸의 배정 예산 (설정이 바뀔 때마다)
+        reason TEXT NOT NULL DEFAULT '',
+        CHECK ((kind = 'fill') = (client_order_id IS NOT NULL AND side IS NOT NULL))
+    ) STRICT;
+    CREATE INDEX ledger_events_by_slot ON ledger_events (slot, id);
+    CREATE TABLE orders (
+        client_order_id TEXT PRIMARY KEY,   -- 멱등 키 — 칸과 거래일로 정해져 하루 한 번
+        mode TEXT NOT NULL CHECK (mode IN ('dry-run', 'live')),
+        slot TEXT NOT NULL,
+        market TEXT NOT NULL,
+        side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
+        qty INTEGER NOT NULL,
+        price_krw INTEGER NOT NULL,         -- 지정가
+        -- 보내기 전에 unknown 으로 먼저 기록 — 결과를 모르는 주문이 있으면 확정 전 재주문 금지
+        status TEXT NOT NULL CHECK (status IN ('unknown', 'filled', 'rejected')),
+        created_ts INTEGER NOT NULL,
+        updated_ts INTEGER NOT NULL
+    ) STRICT;
+    """,
 ]
 
 
