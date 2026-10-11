@@ -47,6 +47,7 @@ export function RuleCheckCard({ info, data }: { info: MarketInfo; data: Checks }
             <th className="py-1 text-right font-normal">앞 절반</th>
             <th className="py-1 text-right font-normal">뒤 절반</th>
             <th className="hidden py-1 text-right font-normal sm:table-cell">최대 하락</th>
+            <th className="hidden py-1 text-right font-normal sm:table-cell">샤프</th>
             <th className="hidden py-1 text-right font-normal sm:table-cell">거래</th>
           </tr>
         </thead>
@@ -56,16 +57,32 @@ export function RuleCheckCard({ info, data }: { info: MarketInfo; data: Checks }
             if (!first || !second || !all) return null;
             return (
               <tr key={spec}>
-                <td className="py-2">{spec === "hold" ? "단순 보유 (비교 기준)" : ruleShortName(spec, info.group)}</td>
+                <td className="py-2">
+                  {spec === "hold" ? "단순 보유 (비교 기준)" : ruleShortName(spec, info.group)}
+                  {all.edge_prob !== null && (
+                    <span className="block text-[11px] text-muted">
+                      샤프가 보유보다 높을 확률 {Math.round(Number(all.edge_prob) * 100)}%
+                    </span>
+                  )}
+                </td>
                 <td className={`py-2 text-right ${tone(Number(first.cagr))}`}>{formatPercent1(Number(first.cagr))}</td>
                 <td className={`py-2 text-right ${tone(Number(second.cagr))}`}>{formatPercent1(Number(second.cagr))}</td>
                 <td className="hidden py-2 text-right text-muted sm:table-cell">{formatPercent1(Number(all.mdd))}</td>
+                <td className="hidden py-2 text-right text-muted sm:table-cell">{Number(all.sharpe).toFixed(2)}</td>
                 <td className="hidden py-2 text-right text-muted sm:table-cell">{all.trades.toLocaleString("ko-KR")}번</td>
               </tr>
             );
           })}
         </tbody>
       </table>
+
+      <p className="rounded-xl bg-background px-4 py-3 text-xs leading-relaxed text-muted">
+        <span className="font-medium text-foreground">샤프</span>는 출렁인 만큼 대비 얼마나 벌었나예요 (연 1 이면 무난, 2 넘으면
+        드묾). <span className="font-medium text-foreground">보유보다 높을 확률</span>은 이 종목에서 규칙{" "}
+        {data.rows.filter((r) => r.period === "all" && r.edge_prob !== null).length}개를 시험한 걸 감안해도 샤프가 단순
+        보유보다 높은 게 우연이 아닐 확률이에요 (Bailey·López de Prado 2014). 여러 개를 시험하면 1등은 운으로도 좋아 보이니까요.
+        95% 쯤은 돼야 &quot;우연은 아니다&quot;라고 말할 수 있어요.
+      </p>
 
       <Sensitivity
         title={`이동평균 기간을 바꿔 보면 (${info.group === "stock" ? "거래일" : "일"})`}
