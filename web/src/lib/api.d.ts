@@ -106,6 +106,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/wallet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wallet */
+        get: operations["wallet_wallet_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/backtests": {
         parameters: {
             query?: never;
@@ -431,6 +448,62 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** WalletFillOut */
+        WalletFillOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "buy" | "sell";
+            /** Qty */
+            qty: string;
+            /** Price */
+            price: string;
+            /** Fee */
+            fee: string;
+            /** Reason */
+            reason: string;
+        };
+        /** WalletOut */
+        WalletOut: {
+            /**
+             * Mode
+             * @constant
+             */
+            mode: "dry-run";
+            /** Slots */
+            slots: components["schemas"]["WalletSlotOut"][];
+        };
+        /** WalletSlotOut */
+        WalletSlotOut: {
+            /** Slot */
+            slot: string;
+            /** Market */
+            market: string;
+            /** Strategy */
+            strategy: string;
+            /** Budget */
+            budget: string;
+            /** Cash */
+            cash: string;
+            /** Qty */
+            qty: string;
+            /** Cost */
+            cost: string;
+            /** Realized */
+            realized: string;
+            /** Close */
+            close: string | null;
+            /** Value */
+            value: string;
+            /** Fills */
+            fills: components["schemas"]["WalletFillOut"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -624,6 +697,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wallet_wallet_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletOut"];
                 };
             };
         };

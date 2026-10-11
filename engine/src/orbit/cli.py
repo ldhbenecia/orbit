@@ -22,7 +22,9 @@ from orbit.backtest.engine import DEFAULT_CONFIG, Funding, run_backtest
 from orbit.backtest.metrics import Metrics, compute_metrics
 from orbit.backtest.runs import RunSpec, save_run
 from orbit.backtest.validate import check_rules, save_checks, specs_for
+from orbit.brokers.dry_run import DryRunBroker
 from orbit.estimate.live import NEXT_OPEN_BASKETS, NextOpenView, build_view
+from orbit.ledger.book import Ledger
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.demo import demo_candles
 from orbit.marketdata.fund_nav import Nav, fetch_ace_nav, fetch_tiger_nav
@@ -37,6 +39,8 @@ from orbit.marketdata.upbit_ticker import try_fetch_ticker
 from orbit.settings import Settings
 from orbit.signals.today import Stance, is_upbit_market, today_signals
 from orbit.strategies.registry import build_strategy
+from orbit.trading.config import DEFAULT_CONFIG_PATH, load_config
+from orbit.trading.daily import run_daily
 
 log = logging.getLogger("orbit")
 
@@ -98,6 +102,15 @@ def main() -> None:
     strategies.add_argument("--monthly", type=Decimal, default=Decimal(0))
     strategies.add_argument("--db", type=Path, default=DEFAULT_DB)
 
+    dry = commands.add_parser(
+        "dry-run", help="오늘 규칙대로 가상 장부에 사고팔기 (실제 주문 없음, 하루 한 번)"
+    )
+    dry.add_argument("--db", type=Path, default=DEFAULT_DB)
+    dry.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+
+    wallet = commands.add_parser("wallet", help="가상 장부 — 규칙 칸마다 예산·현금·보유·손익")
+    wallet.add_argument("--db", type=Path, default=DEFAULT_DB)
+
     validate = commands.add_parser(
         "validate", help="규칙 검증 — 기간을 나눈 성과와 파라미터 민감도를 기록 (코인·미국주식)"
     )
@@ -124,6 +137,10 @@ def main() -> None:
         uvicorn.run(app, host="127.0.0.1", port=args.port)
     elif args.command == "backtest":
         _backtest(args.market, args.start, args.end, args.monthly, args.db)
+    elif args.command == "dry-run":
+        _dry_run(args.db, args.config)
+    elif args.command == "wallet":
+        _wallet(args.db)
     elif args.command == "demo-data":
         _demo_data(args.db)
     elif args.command == "validate":
@@ -243,6 +260,53 @@ _GLOSSARY = [
     "  (기준가)      중간 입금 효과를 뺀 전략 자체의 성과",
     "  과거 데이터로 돌린 결과이며 앞으로도 같다는 뜻이 아님",
 ]
+
+
+def _dry_run(db: Path, config_path: Path) -> None:
+    config = load_config(config_path)
+    if config is None:
+        return
+    conn = sqlite3.connect(db)
+    try:
+        report = run_daily(
+            conn,
+            config,
+            DryRunBroker(),
+            CandleStore(conn).load,
+            try_fetch_ticker,
+            datetime.now(UTC),
+        )
+    finally:
+        conn.close()
+    for line in report.lines:
+        log.info("  %s", line)
+    if report.stopped:
+        log.error("정지: %s", report.stopped)
+    log.info("dry-run — 실제 주문 없음. 주문 %d건 기록", report.orders)
+
+
+def _wallet(db: Path) -> None:
+    conn = sqlite3.connect(db)
+    try:
+        ledger = Ledger(conn, "dry-run")
+        store = CandleStore(conn)
+        for slot, market in ledger.slots():
+            state = ledger.state(slot, market)
+            candles = store.load(market)
+            close = candles[-1].close if candles else Decimal(0)
+            value = state.cash + state.qty * close
+            log.info(
+                "%s 예산 %s원 · 현금 %s원 · 보유 %s · 평가 %s원 (%+.1f%%) · 실현 %s원",
+                slot,
+                f"{state.budget:,.0f}",
+                f"{state.cash:,.0f}",
+                f"{state.qty.normalize():f}",
+                f"{value:,.0f}",
+                (value / state.budget - 1) * 100 if state.budget else 0,
+                f"{state.realized:,.0f}",
+            )
+    finally:
+        conn.close()
 
 
 def _demo_data(db: Path) -> None:

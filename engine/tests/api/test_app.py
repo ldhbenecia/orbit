@@ -257,3 +257,10 @@ def test_규칙_검증은_기록이_없으면_비움(tmp_path: Path) -> None:
     client = TestClient(create_app(lambda: sqlite3.connect(db)))
 
     assert client.get("/rule-checks", params={"market": "KRW-BTC"}).json() is None
+
+
+def test_가상_장부가_비어_있으면_빈_목록(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    client = TestClient(create_app(lambda: sqlite3.connect(db)))
+
+    assert client.get("/wallet").json() == {"mode": "dry-run", "slots": []}

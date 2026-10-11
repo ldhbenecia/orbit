@@ -1,0 +1,15 @@
+# 자동매매 설정 예시 — 복사해서 config/orbit.local.yaml 로 (그 파일은 커밋되지 않음)
+# 값은 예시. 예산·한도를 올리는 것과 실거래 전환은 사람만 한다
+mode: dry-run            # 지금은 dry-run 만. live 라고 써도 dry-run 으로 실행됨
+budget_krw: 500000       # 자동매매에 배정한 돈 — 계좌 잔고가 아니라 이 금액만 씀
+reinvest_profit: false   # 실현 수익을 예산에 다시 넣을지
+limits:
+  max_order_krw: 200000  # 1회 주문 금액 상한
+  max_orders_per_day: 2  # 하루 주문 횟수 상한 (전 규칙 합)
+rules:                   # 종목은 KRW-BTC·KRW-ETH 만, 규칙은 ma-N 또는 hold
+  - market: KRW-BTC
+    strategy: ma-120
+    weight: 0.5          # 예산 중 이 규칙 몫 — 합이 1 이하
+  - market: KRW-ETH
+    strategy: ma-120
+    weight: 0.5
