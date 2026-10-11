@@ -84,7 +84,7 @@ cp config/orbit.example.yaml config/orbit.local.yaml   # 가상 지갑을 쓰려
 ## 문서
 
 - [orbit 이 쓰는 규칙](docs/knowledge/orbit-rules.md) — 한 줄 요약, 공통 가정, 전략별 규칙·결과, 신호·적립식 계산
-- [투자 규칙 카탈로그](docs/knowledge/strategies.md) · [리스크 관리](docs/knowledge/risk-management.md) · [백테스트 함정](docs/knowledge/backtest-pitfalls.md) · [용어집](docs/knowledge/glossary.md)
+- [투자 규칙 카탈로그](docs/knowledge/strategies.md) · [연구 목록](docs/knowledge/research.md) · [학습 경로](docs/knowledge/learning-path.md) · [리스크 관리](docs/knowledge/risk-management.md) · [백테스트 함정](docs/knowledge/backtest-pitfalls.md) · [용어집](docs/knowledge/glossary.md)
 - [업비트 KRW 마켓 규칙](docs/knowledge/upbit-krw-market.md) · [토스증권 Open API](docs/knowledge/toss-open-api.md) · [토스증권 수수료](docs/knowledge/toss-fees.md)
 
 ## 라이선스
