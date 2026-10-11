@@ -24,8 +24,8 @@
 
 | 연구 | 핵심 | orbit 에서 | 상태 |
 |---|---|---|---|
-| Harvey·Liu·Zhu (2016), "…and the Cross-Section of Expected Returns", *Review of Financial Studies* | 여러 개를 시험하면 우연히 좋은 게 나옴 — 시험 횟수만큼 기준을 높여야 | 규칙 검증에 시험 횟수 표시 | 진행 중 |
-| Bailey·López de Prado (2014), "The Deflated Sharpe Ratio", *Journal of Portfolio Management* | 시험 횟수·수익 분포(치우침·두꺼운 꼬리)를 감안해 샤프 비율이 우연이 아닐 확률 | 규칙마다 "보유보다 나은 게 우연이 아닐 확률" | 진행 중 |
+| Harvey·Liu·Zhu (2016), "…and the Cross-Section of Expected Returns", *Review of Financial Studies* | 여러 개를 시험하면 우연히 좋은 게 나옴 — 시험 횟수만큼 기준을 높여야 | 규칙 검증에 시험 횟수 표시 | ✅ |
+| Bailey·López de Prado (2014), "The Deflated Sharpe Ratio", *Journal of Portfolio Management* | 시험 횟수·수익 분포(치우침·두꺼운 꼬리)를 감안해 샤프 비율이 우연이 아닐 확률 | 규칙마다 "샤프가 보유보다 높은 게 우연이 아닐 확률" — 기준선을 보유 샤프로 | ✅ |
 | López de Prado (2018), 『Advances in Financial Machine Learning』 | 한 번 나누는 검증은 부족 — 굴려가며 반복(워크포워드), 정보 누설 방지 | 반씩 나누기 → 여러 구간 워크포워드 | 예정 |
 
 ## 적립 · 기타
