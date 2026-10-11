@@ -106,6 +106,11 @@ MIGRATIONS: list[str] = [
         updated_ts INTEGER NOT NULL
     ) STRICT;
     """,
+    # 5: 규칙 검증에 샤프 비율과 시험 횟수로 보정한 "샤프가 보유보다 높은 게 우연이 아닐 확률"
+    """
+    ALTER TABLE rule_checks ADD COLUMN sharpe_ppm INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE rule_checks ADD COLUMN edge_ppm INTEGER;  -- 전체 기간·보유 외 규칙만, 나머지는 NULL
+    """,
 ]
 
 

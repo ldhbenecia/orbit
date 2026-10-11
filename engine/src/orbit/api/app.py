@@ -139,6 +139,10 @@ class RuleCheckOut(BaseModel):
     mdd: Decimal
     trades: int
     fee_ratio: Decimal  # 기간 수수료·슬리피지 ÷ 기간 시작 평가액
+    sharpe: Decimal  # 연환산 샤프 비율
+    edge_prob: (
+        Decimal | None
+    )  # 전체 기간 — 시험 횟수를 감안해도 샤프가 보유보다 높은 게 우연이 아닐 확률
 
 
 class RuleChecksOut(BaseModel):
@@ -383,6 +387,8 @@ def create_app(
                     mdd=r.mdd,
                     trades=r.trades,
                     fee_ratio=r.fee_ratio,
+                    sharpe=r.sharpe,
+                    edge_prob=r.edge_prob,
                 )
                 for r in saved.rows
             ],
