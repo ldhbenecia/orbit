@@ -349,22 +349,33 @@ def _validate(markets: list[str], db: Path) -> None:
                 version,
             )
             log.info(
-                "%-10s %9s %9s %9s %8s %6s", "", "CAGR 전체", "앞 절반", "뒤 절반", "MDD", "거래"
+                "%-10s %9s %9s %9s %8s %6s %6s %8s",
+                "",
+                "CAGR 전체",
+                "앞 절반",
+                "뒤 절반",
+                "MDD",
+                "거래",
+                "샤프",
+                "우연 아님",
             )
             for spec in specs_for(market):
                 a, f, b = (table[(spec, p)] for p in ("all", "first", "second"))
                 log.info(
-                    "%-10s %9s %9s %9s %8s %6d",
+                    "%-10s %9s %9s %9s %8s %6d %6s %8s",
                     spec,
                     f"{a.cagr:+.1%}",
                     f"{f.cagr:+.1%}",
                     f"{b.cagr:+.1%}",
                     f"{a.mdd:.1%}",
                     a.trades,
+                    f"{a.sharpe:.2f}",
+                    "—" if a.edge_prob is None else f"{a.edge_prob:.0%}",
                 )
     finally:
         conn.close()
-    log.info("\n과거 데이터로 돌린 결과이며 앞으로도 같다는 뜻이 아님")
+    log.info("\n우연 아님: 시험한 규칙 수를 감안해도 샤프가 단순 보유보다 높은 게 우연이 아닐 확률")
+    log.info("과거 데이터로 돌린 결과이며 앞으로도 같다는 뜻이 아님")
 
 
 def _code_version() -> str:

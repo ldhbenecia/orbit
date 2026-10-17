@@ -50,3 +50,29 @@ def test_가장_최근_검증_묶음만_돌려줌(tmp_path: Path) -> None:
     assert saved is not None and saved.code_version == "new"
     assert len(saved.rows) == 1 and saved.rows[0].cagr == round(rows[0].cagr, 6)
     assert latest_checks(conn, "US-QQQ") is None
+
+
+def test_보유_외_규칙은_전체_기간에_보유보다_나은_게_우연이_아닐_확률이_붙음(
+    tmp_path: Path,
+) -> None:
+    prices = (
+        [(100, 100)] * 3
+        + [(100 + i, 101 + i) for i in range(30)]
+        + [(130 - i, 129 - i) for i in range(30)]
+    )
+    history = candles(prices)
+    rows = check_rules("KRW-BTC", history, ["hold", "ma-2", "ma-3"], warmup=3)
+    by = {(r.strategy, r.period): r for r in rows}
+
+    assert by[("hold", "all")].edge_prob is None
+    assert by[("ma-2", "first")].edge_prob is None
+    prob = by[("ma-2", "all")].edge_prob
+    assert prob is not None and Decimal(0) <= prob <= Decimal(1)
+
+    conn = sqlite3.connect(tmp_path / "orbit.sqlite")
+    save_checks(conn, "KRW-BTC", rows, datetime(2026, 10, 1, tzinfo=UTC), "v")
+    saved = latest_checks(conn, "KRW-BTC")
+    assert saved is not None
+    loaded = {(r.strategy, r.period): r for r in saved.rows}
+    assert loaded[("ma-2", "all")].edge_prob == round(prob, 6)
+    assert loaded[("ma-2", "all")].sharpe == round(by[("ma-2", "all")].sharpe, 6)

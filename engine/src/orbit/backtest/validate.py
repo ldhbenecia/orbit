@@ -1,6 +1,7 @@
+import math
 import sqlite3
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
@@ -8,6 +9,7 @@ from typing import Literal
 from orbit.backtest.configs import config_for
 from orbit.backtest.engine import BacktestResult, Funding, run_backtest
 from orbit.backtest.metrics import DAYS_PER_YEAR
+from orbit.backtest.stats import deflated_sharpe, moments, sharpe
 from orbit.db.migrations import migrate
 from orbit.marketdata.candle import Candle
 from orbit.strategies.registry import build_strategy
@@ -33,6 +35,9 @@ class RuleCheck:
     mdd: Decimal
     trades: int
     fee_ratio: Decimal  # 기간 수수료·슬리피지 ÷ 기간 시작 평가액
+    sharpe: Decimal = Decimal(0)  # 연환산 샤프 비율 — 출렁인 만큼 대비 수익 (무위험 수익률 0)
+    # 전체 기간만 — 시험 횟수·수익 분포를 감안해도 샤프가 단순 보유보다 높은 게 우연이 아닐 확률
+    edge_prob: Decimal | None = None
 
 
 def specs_for(market: str) -> list[str]:
@@ -62,13 +67,56 @@ def check_rules(
     whole, first, second = periods(candles, warmup)
     spans: list[tuple[Period, Span]] = [("all", whole), ("first", first), ("second", second)]
     funding = Funding(initial=_initial(market), monthly=Decimal(0))
-    rows = []
+    per_year = 365 if market.startswith("KRW-") else 252
+    results = {}
     for spec in specs:
         strategy, _ = build_strategy(spec)
-        result = run_backtest(candles, strategy, funding, config_for(market))
-        for period, span in spans:
-            rows.append(_slice(spec, period, span, result))
-    return rows
+        results[spec] = run_backtest(candles, strategy, funding, config_for(market))
+    rows = [
+        _slice(spec, period, span, result, per_year)
+        for spec, result in results.items()
+        for period, span in spans
+    ]
+    return _with_edge(rows, results, whole) if "hold" in results else rows
+
+
+def _daily_returns(result: BacktestResult, span: Span) -> list[float]:
+    start, end = span
+    navs = [r.nav for r in result.records]
+    days = [r.day for r in result.records]
+    first = next(i for i, d in enumerate(days) if d >= start)
+    out = []
+    for i in range(first, len(days)):
+        if days[i] > end:
+            break
+        out.append(float(navs[i] / navs[i - 1] - 1))
+    return out
+
+
+def _with_edge(
+    rows: list[RuleCheck], results: dict[str, BacktestResult], whole: Span
+) -> list[RuleCheck]:
+    # 규칙의 샤프가 단순 보유보다 높은 게 우연이 아닐 확률 — 이 종목에서 시험한 규칙 수로 보정
+    # 일별 수익의 단순 차이로 보면 덜 출렁여 복리가 덜 깎이는 효과를 놓쳐 위험을 줄이는 규칙에 불리
+    returns = {spec: _daily_returns(result, whole) for spec, result in results.items()}
+    benchmark = sharpe(returns["hold"])
+    srs = {spec: sharpe(series) for spec, series in returns.items() if spec != "hold"}
+    if not srs:
+        return rows
+    mean_sr = sum(srs.values()) / len(srs)
+    variance = sum((v - mean_sr) ** 2 for v in srs.values()) / max(len(srs) - 1, 1)
+    probs = {}
+    for spec, sr in srs.items():
+        _, _, skew, kurt = moments(returns[spec])
+        probs[spec] = deflated_sharpe(
+            sr, len(returns[spec]), skew, kurt, len(srs), variance, benchmark
+        )
+    return [
+        replace(r, edge_prob=Decimal(str(round(probs[r.strategy], 6))))
+        if r.period == "all" and r.strategy in probs
+        else r
+        for r in rows
+    ]
 
 
 def _initial(market: str) -> Decimal:
@@ -76,7 +124,9 @@ def _initial(market: str) -> Decimal:
     return Decimal(10_000) if market.startswith("US-") else Decimal(10_000_000)
 
 
-def _slice(spec: str, period: Period, span: Span, result: BacktestResult) -> RuleCheck:
+def _slice(
+    spec: str, period: Period, span: Span, result: BacktestResult, per_year: int
+) -> RuleCheck:
     start, end = span
     records = result.records
     # 기간 첫날 시가에 이미 체결되므로 기준은 그 전날 종가 기준가
@@ -101,6 +151,7 @@ def _slice(spec: str, period: Period, span: Span, result: BacktestResult) -> Rul
         mdd=mdd,
         trades=len(trades),
         fee_ratio=costs / base.equity if base.equity else Decimal(0),
+        sharpe=Decimal(str(round(sharpe(_daily_returns(result, span)) * math.sqrt(per_year), 6))),
     )
 
 
@@ -117,8 +168,8 @@ def save_checks(
             """
             INSERT INTO rule_checks (
                 market, created_ts, strategy, period, code_version, start_ts, end_ts,
-                cagr_ppm, mdd_ppm, trades, fee_ppm
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                cagr_ppm, mdd_ppm, trades, fee_ppm, sharpe_ppm, edge_ppm
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -133,6 +184,8 @@ def save_checks(
                     round_to_units(r.mdd, PPM),
                     r.trades,
                     round_to_units(r.fee_ratio, PPM),
+                    round_to_units(r.sharpe, PPM),
+                    None if r.edge_prob is None else round_to_units(r.edge_prob, PPM),
                 )
                 for r in rows
             ],
@@ -156,7 +209,8 @@ def latest_checks(conn: sqlite3.Connection, market: str) -> SavedChecks | None:
         return None
     rows = conn.execute(
         """
-        SELECT strategy, period, code_version, start_ts, end_ts, cagr_ppm, mdd_ppm, trades, fee_ppm
+        SELECT strategy, period, code_version, start_ts, end_ts, cagr_ppm, mdd_ppm, trades, fee_ppm,
+            sharpe_ppm, edge_ppm
         FROM rule_checks WHERE market = ? AND created_ts = ?
         """,
         (market, found),
@@ -174,6 +228,8 @@ def latest_checks(conn: sqlite3.Connection, market: str) -> SavedChecks | None:
                 mdd=from_units(row[6], PPM),
                 trades=row[7],
                 fee_ratio=from_units(row[8], PPM),
+                sharpe=from_units(row[9], PPM),
+                edge_prob=None if row[10] is None else from_units(row[10], PPM),
             )
             for row in rows
         ],

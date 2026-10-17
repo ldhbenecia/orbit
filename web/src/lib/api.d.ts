@@ -338,6 +338,10 @@ export interface components {
             trades: number;
             /** Fee Ratio */
             fee_ratio: string;
+            /** Sharpe */
+            sharpe: string;
+            /** Edge Prob */
+            edge_prob: string | null;
         };
         /** RuleChecksOut */
         RuleChecksOut: {
