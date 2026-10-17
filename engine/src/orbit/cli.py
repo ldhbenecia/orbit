@@ -416,11 +416,12 @@ _ROWS: list[tuple[str, Callable[[Metrics], str]]] = [
 ]
 
 
-_STANCE_LABEL = {
+_STANCE_LABEL: dict[Stance, str] = {
     Stance.HOLD: "보유 구간",
     Stance.CASH: "현금 구간",
     Stance.BREAKOUT_WAIT: "돌파 대기",
     Stance.BREAKOUT_HIT: "돌파함",
+    Stance.NOT_ENOUGH: "데이터 부족",
 }
 
 
