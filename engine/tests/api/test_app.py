@@ -438,6 +438,34 @@ def test_월급날_규칙은_미국_주식만_계산하고_엔진_비교와_같�
     assert client.get("/payday", params={"market": "KRW-BTC"}).json() is None
 
 
+def test_추세_템플릿은_관심_종목과_종목_화면이_같고_상대강도는_등록_종목끼리(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "orbit.sqlite"
+    store = CandleStore.open(db)
+    # 기울기만 다른 5종목 — 1년 수익률 순서 A < B < C < D < E
+    slopes = dict(zip("ABCDE", (1, 2, 3, 4, 5), strict=True))
+    for name, k in slopes.items():
+        store.upsert(_stock(f"US-{name}", [100 + k * i for i in range(300)]), fetched_at=D)
+    store.close()
+    universe = Universe(
+        tuple(Instrument(f"US-{n}", n, NEW_YORK, sector="테크") for n in slopes), ("테크",)
+    )
+    client = TestClient(create_app(lambda: sqlite3.connect(db), universe=universe))
+
+    rows = {r["market"]: r["template"] for r in client.get("/watchlist").json()}
+    page = client.get("/trend-template", params={"market": "US-E"}).json()
+
+    assert rows["US-E"] == page
+    strong = {
+        m: next(c["passed"] for c in t["checks"] if c["check"] == "strong") for m, t in rows.items()
+    }
+    # 나보다 낮은 종목 비율 0, ¼, ½, ¾, 1 — 0.7 이상은 D·E
+    assert strong == {"US-A": False, "US-B": False, "US-C": False, "US-D": True, "US-E": True}
+    assert (page["passed"], page["known"], page["peers"]) == (8, 8, 5)
+    assert client.get("/trend-template", params={"market": "KRW-BTC"}).json() is None
+
+
 def test_규칙_검증은_기록이_없으면_비움(tmp_path: Path) -> None:
     db = tmp_path / "orbit.sqlite"
     client = TestClient(create_app(lambda: sqlite3.connect(db)))
