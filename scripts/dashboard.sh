@@ -23,6 +23,8 @@ if [ "${1:-}" != "--no-sync" ]; then
   uv run --project engine orbit sync-candles --market KRW-ETH
   # 허용 IP 가 아닌 곳(카페 등)에서는 토스가 막힘 — 코인은 그대로 볼 수 있게 계속 진행
   uv run --project engine orbit sync-stocks || echo "  토스 시세 갱신 실패 — 허용 IP 확인. 미국주식·ETF 는 마지막 받은 데이터로 보여요"
+  # 분기 공시라 자주 바뀌지 않음 — 실패해도 마지막 받은 재무로
+  uv run --project engine orbit sync-fundamentals || echo "  재무 갱신 실패 — 마지막 받은 재무로 보여요"
   uv run --project engine orbit validate >/dev/null 2>&1 || echo "  규칙 검증 갱신 실패 — 마지막 결과로 보여요"
   # 규칙대로 오늘 가상 장부에 기록 — 실제 주문 없음, 같은 날 여러 번 열어도 한 번만
   echo "▶ 오늘 판단 기록 (dry-run)"

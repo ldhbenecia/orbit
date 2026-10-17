@@ -24,6 +24,9 @@ from orbit.backtest.runs import RunSpec, save_run
 from orbit.backtest.validate import check_rules, save_checks, specs_for
 from orbit.brokers.dry_run import DryRunBroker
 from orbit.estimate.live import NextOpenView, build_view
+from orbit.fundamentals.edgar import edgar_symbol, fetch_facts, fetch_tickers
+from orbit.fundamentals.snapshot import snapshots
+from orbit.fundamentals.store import save_snapshots
 from orbit.ledger.book import Ledger
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.demo import demo_candles, demo_names
@@ -71,6 +74,11 @@ def main() -> None:
         "sync-stocks", help="토스증권에서 등록한 주식·ETF 일봉을 받아 저장"
     )
     stocks.add_argument("--db", type=Path, default=DEFAULT_DB)
+
+    fundamentals = commands.add_parser(
+        "sync-fundamentals", help="SEC 공시에서 등록한 미국 종목의 재무를 받아 저장"
+    )
+    fundamentals.add_argument("--db", type=Path, default=DEFAULT_DB)
 
     serve = commands.add_parser("serve", help="대시보드용 조회 API 실행 (이 기기에서만 접속)")
     serve.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -130,6 +138,8 @@ def main() -> None:
         _sync_candles(args.market, args.db)
     elif args.command == "sync-stocks":
         _sync_stocks(args.db)
+    elif args.command == "sync-fundamentals":
+        _sync_fundamentals(args.db)
     elif args.command == "serve":
         db = args.db
         # 가상 데이터 화면은 예시 종목 목록으로 — 내 목록이 캡처에 섞이지 않게
@@ -513,6 +523,44 @@ def _sync_stocks(db: Path) -> None:
     store.close()
 
 
+def _sync_fundamentals(db: Path) -> None:
+    settings = Settings()
+    if settings.sec_user_agent is None:
+        log.error(".env 에 SEC_USER_AGENT 가 없음 — SEC 는 연락처(이름 이메일)를 요구함")
+        return
+    stocks = [i for i in load_universe().instruments if i.currency == "USD"]
+    headers = {"User-Agent": settings.sec_user_agent.get_secret_value()}
+    conn = sqlite3.connect(db)
+    try:
+        with httpx.Client(headers=headers, timeout=30) as client:
+            ciks = fetch_tickers(client)
+            for instrument in stocks:
+                cik = ciks.get(edgar_symbol(instrument.symbol))
+                if cik is None:
+                    log.info("%s 재무 없음 (SEC 공시 회사 아님 — ETF 등)", instrument.market)
+                    continue
+                time.sleep(SEC_INTERVAL)
+                try:
+                    snaps = snapshots(fetch_facts(client, cik))
+                except httpx.HTTPError as error:
+                    # 한 회사가 실패해도 나머지는 받음 — 시세와 무관한 참고 정보
+                    log.warning("%s 재무 받기 실패 (%s)", instrument.market, type(error).__name__)
+                    continue
+                save_snapshots(conn, instrument.market, snaps, datetime.now(UTC))
+                if snaps:
+                    log.info(
+                        "%s 보고서 %d개, 최근 %s 공시 (%s 기준)",
+                        instrument.market,
+                        len(snaps),
+                        snaps[-1].filed,
+                        snaps[-1].period_end,
+                    )
+                else:
+                    log.info("%s 재무 없음 (미국 기업 연간·분기 보고서 없음)", instrument.market)
+    finally:
+        conn.close()
+
+
 def _toss_api() -> TossMarketData | None:
     # 토큰은 클라이언트당 하나만 유효 — 서버 안에서는 이 클라이언트 하나만 씀
     settings = Settings()
@@ -538,6 +586,7 @@ def _kr_calendar(api: TossMarketData) -> Callable[[date], date]:
 
 
 # 토스 호출이 종목당 10번 넘게 일어남 — 시세 갱신 주기(1분)만큼만 재사용
+SEC_INTERVAL = 0.15  # SEC 는 초당 10회 이하만 허용
 TOSS_BATCH = 200  # 토스 종목 정보 한 번에 최대 200개
 NEXT_OPEN_TTL = timedelta(minutes=1)
 NAV_TTL = timedelta(minutes=10)
