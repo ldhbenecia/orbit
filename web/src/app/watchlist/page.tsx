@@ -34,15 +34,14 @@ export default async function WatchlistPage() {
   }
 
   const sectors = [...new Set(rows.map((r) => r.sector))];
-  const asOf = rows.find((r) => r.as_of)?.as_of;
 
   return (
     <div className="space-y-8">
       <div className="space-y-1">
         <h1 className="text-xl font-bold">관심 종목</h1>
         <p className="text-sm text-muted">
-          가격이 어디쯤인지와 추세만 보여줘요 — 추천이 아니에요. 추세는 대시보드 신호와 같은 이동평균 규칙이에요.
-          {asOf && ` ${formatDate(asOf)} 종가 기준.`}
+          가격이 어디쯤인지와 추세만 보여줘요 — 추천이 아니에요. 추세는 대시보드 신호와 같은 이동평균 규칙이에요. 가격은
+          종목마다 그 거래소의 마지막 종가예요 (가격에 마우스를 올리면 날짜).
         </p>
       </div>
       {sectors.map((sector) => (
@@ -94,7 +93,9 @@ function WatchRow({ row, info }: { row: Row; info: MarketInfo | undefined }) {
           <span className="text-muted">시세 없음</span>
         ) : (
           <>
-            <span>{formatPrice(Number(row.close), currency)}</span>
+            <span title={row.as_of ? `${formatDate(row.as_of)} 종가` : undefined}>
+              {formatPrice(Number(row.close), currency)}
+            </span>
             {row.change !== null && (
               <span className={`ml-1.5 text-xs ${tone(Number(row.change))}`}>{formatPercent1(Number(row.change))}</span>
             )}

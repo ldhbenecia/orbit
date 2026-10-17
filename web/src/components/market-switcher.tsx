@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState, useTransition } from "react";
 
 import { type Currency, formatPercent, formatPrice } from "@/lib/format";
@@ -27,8 +27,9 @@ export function MarketSwitcher({
   children: ReactNode;
 }) {
   const router = useRouter();
-  // 관심 종목처럼 타일에 없는 종목을 보고 있으면 아무 타일도 선택하지 않음
-  const current = useSearchParams().get("market") ?? markets[0]?.market ?? "";
+  // 첫 타일을 기본으로 보는 건 대시보드 화면만 — 관심 종목 화면이나 타일에 없는 종목이면 아무 타일도 선택 안 함
+  const onDashboard = usePathname() === "/";
+  const current = useSearchParams().get("market") ?? (onDashboard ? (markets[0]?.market ?? "") : "");
   const [pending, startTransition] = useTransition();
   const [chosen, setChosen] = useState<string | null>(null);
   const selected = pending && chosen ? chosen : current;
