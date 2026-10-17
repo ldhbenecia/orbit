@@ -26,10 +26,10 @@ from orbit.brokers.dry_run import DryRunBroker
 from orbit.estimate.live import NextOpenView, build_view
 from orbit.ledger.book import Ledger
 from orbit.marketdata.candle import Candle
-from orbit.marketdata.demo import demo_candles
+from orbit.marketdata.demo import demo_candles, demo_names
 from orbit.marketdata.fund_nav import Nav, fetch_ace_nav, fetch_tiger_nav
 from orbit.marketdata.instruments import (
-    COINS,
+    COIN_MARKETS,
     DEFAULT_MARKETS_PATH,
     EXAMPLE_MARKETS_PATH,
     SEOUL,
@@ -142,7 +142,6 @@ def main() -> None:
             kr_trading_day_for=_kr_calendar(toss) if toss else None,
             next_open=_next_open(toss, universe) if toss else None,
             universe=universe,
-            demo=args.demo,
         )
         uvicorn.run(app, host="127.0.0.1", port=args.port)
     elif args.command == "backtest":
@@ -324,7 +323,7 @@ def _demo_data(db: Path) -> None:
     end = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
     # 예시 종목 목록으로 — 가상 데이터 화면에 내 목록이 섞이지 않게
     universe = load_universe(EXAMPLE_MARKETS_PATH)
-    markets = [market for market, _ in COINS] + universe.markets
+    markets = COIN_MARKETS + universe.markets
     store = CandleStore.open(db)
     for market in markets:
         start = (
@@ -334,6 +333,11 @@ def _demo_data(db: Path) -> None:
         )
         store.upsert(demo_candles(market, start, end), fetched_at=datetime.now(UTC))
     store.close()
+    conn = sqlite3.connect(db)
+    try:
+        save_names(conn, demo_names(universe), datetime.now(UTC))
+    finally:
+        conn.close()
     _validate(validated_markets(universe), db)
     log.info("가상 시세 DB: %s — uv run orbit serve --demo --db %s", db, db)
 
@@ -341,7 +345,7 @@ def _demo_data(db: Path) -> None:
 def validated_markets(universe: Universe) -> list[str]:
     # 코인 + 대시보드의 미국 종목. 국내 ETF 는 호가 단위를 공식 확인하기 전이라 제외
     us = [i.market for i in universe.instruments if i.dashboard and i.market.startswith("US-")]
-    return [market for market, _ in COINS] + us
+    return COIN_MARKETS + us
 
 
 def _validate(markets: list[str], db: Path) -> None:

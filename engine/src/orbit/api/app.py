@@ -1,7 +1,7 @@
 import logging
 import sqlite3
 import threading
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -19,11 +19,11 @@ from orbit.indicators.moving_average import sma
 from orbit.ledger.book import Ledger
 from orbit.marketdata.aggregate import Interval, aggregate
 from orbit.marketdata.candle import Candle
-from orbit.marketdata.instruments import COINS, SEOUL, Universe
+from orbit.marketdata.instruments import COIN_MARKETS, COINS, SEOUL, Universe
 from orbit.marketdata.names import load_names
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.upbit_ticker import Ticker
-from orbit.signals.today import Stance, is_upbit_market, today_signals
+from orbit.signals.today import STOCK_SIGNAL_STRATEGIES, Stance, is_upbit_market, today_signals
 from orbit.strategies.registry import build_strategy
 
 
@@ -46,12 +46,13 @@ class TrendOut(BaseModel):
 class WatchRowOut(BaseModel):
     market: str
     sector: str
-    as_of: date | None  # 마지막 확정 봉
-    close: Decimal | None
-    change: Decimal | None  # 전일 종가 대비
-    return_1y: Decimal | None  # 약 1년(252거래일) 전 종가 대비
-    from_high: Decimal | None  # 최근 52주 최고 종가 대비 (0 이하)
-    trend: list[TrendOut]
+    currency: Literal["KRW", "USD"]
+    as_of: date | None = None  # 마지막 확정 봉 — 일봉이 없으면 이하 모두 없음
+    close: Decimal | None = None
+    change: Decimal | None = None  # 전일 종가 대비
+    return_1y: Decimal | None = None  # 약 1년(252거래일) 전 종가 대비
+    from_high: Decimal | None = None  # 최근 52주 최고 종가 대비 (0 이하)
+    trend: list[TrendOut] = []
 
 
 class CandleOut(BaseModel):
@@ -212,7 +213,10 @@ log = logging.getLogger(__name__)
 
 DCA_EXAMPLE_MONTHLY = Decimal(1_000_000)
 POSITION_WINDOWS = (60, 120)
-TREND_WINDOWS = (60, 120, 200)  # 신호에 쓰는 이동평균 규칙과 같은 기간
+# 관심 종목 추세 — 주식 신호 규칙(이동평균) 그대로, 신호를 바꾸면 같이 바뀌게
+TREND_RULES = [
+    (int(spec.split("-")[1]), build_strategy(spec)[0]) for spec in STOCK_SIGNAL_STRATEGIES
+]
 YEAR_BARS = 252  # 주식 1년 거래일
 
 
@@ -236,9 +240,8 @@ def create_app(
     today: Callable[[], date] = lambda: datetime.now(SEOUL).date(),
     next_open: Callable[[str], NextOpenView] | None = None,
     universe: Universe = NO_STOCKS,
-    demo: bool = False,  # README 캡처용 — 종목 이름을 예시 이름으로
 ) -> FastAPI:
-    warm_markets: Sequence[str] = [market for market, _ in COINS] + universe.markets
+    warm_markets = COIN_MARKETS + universe.markets
     # 전 기간 일봉을 Decimal 로 바꾸는 게 요청 비용 대부분 — DB 가 그대로면 읽어 둔 걸 씀
     cache: dict[str, tuple[tuple[int, int | None], list[Candle]]] = {}
 
@@ -269,7 +272,7 @@ def create_app(
 
     @app.get("/markets")
     def markets() -> list[MarketOut]:
-        # 종목 목록은 로컬 설정에서 — 웹은 이 목록으로 타일·관심 종목을 그림
+        # 종목 목록은 로컬 설정에서, 이름은 토스 종목 정보 캐시에서 (가상 데이터 DB 는 예시 이름)
         conn = connect()
         try:
             names = load_names(conn)
@@ -278,31 +281,21 @@ def create_app(
         out = [
             MarketOut(
                 market=market,
-                name=f"예시 코인 {chr(65 + i)}" if demo else name,
+                name=names[market].name if market in names else name,
                 group="coin",
                 currency="KRW",
                 dashboard=True,
             )
-            for i, (market, name) in enumerate(COINS)
+            for market, name in COINS
         ]
-        dashboard_index = watch_index = 0
         for instrument in universe.instruments:
-            if demo:
-                if instrument.dashboard:
-                    dashboard_index += 1
-                    name = f"예시 종목 {dashboard_index}"
-                else:
-                    watch_index += 1
-                    name = f"예시 관심 종목 {watch_index}"
-            else:
-                cached = names.get(instrument.market)
-                name = cached.name if cached else instrument.symbol
+            cached = names.get(instrument.market)
             out.append(
                 MarketOut(
                     market=instrument.market,
-                    name=name,
+                    name=cached.name if cached else instrument.symbol,
                     group="stock",
-                    currency="USD" if instrument.market.startswith("US-") else "KRW",
+                    currency=instrument.currency,
                     dashboard=instrument.dashboard,
                     dca=instrument.dca,
                     next_open=instrument.next_open is not None,
@@ -316,43 +309,25 @@ def create_app(
         # 관심 종목 — 사라·말라가 아니라 사실(가격 위치·추세)만
         rows = []
         for instrument in universe.watchlist():
-            assert instrument.sector is not None
-            candles = load_candles(instrument.market)
-            if len(candles) < 2:
-                rows.append(
-                    WatchRowOut(
-                        market=instrument.market,
-                        sector=instrument.sector,
-                        as_of=None,
-                        close=None,
-                        change=None,
-                        return_1y=None,
-                        from_high=None,
-                        trend=[],
-                    )
-                )
-                continue
-            last = candles[-1].close
-            year = candles[-YEAR_BARS:]
-            trend = []
-            for window in TREND_WINDOWS:
-                decision = build_strategy(f"ma-{window}")[0](candles)
-                if decision.enough_data:
-                    trend.append(TrendOut(window=window, above=decision.target_weight > 0))
-            rows.append(
-                WatchRowOut(
-                    market=instrument.market,
-                    sector=instrument.sector,
-                    as_of=candles[-1].start.date(),
-                    close=last,
-                    change=last / candles[-2].close - 1,
-                    return_1y=last / candles[-YEAR_BARS - 1].close - 1
-                    if len(candles) > YEAR_BARS
-                    else None,
-                    from_high=last / max(c.close for c in year) - 1,
-                    trend=trend,
-                )
+            assert instrument.sector is not None  # watchlist() 는 분야가 있는 종목만
+            row = WatchRowOut(
+                market=instrument.market, sector=instrument.sector, currency=instrument.currency
             )
+            candles = load_candles(instrument.market)
+            if len(candles) >= 2:
+                last = candles[-1].close
+                row.as_of = candles[-1].start.date()
+                row.close = last
+                row.change = last / candles[-2].close - 1
+                if len(candles) > YEAR_BARS:
+                    row.return_1y = last / candles[-YEAR_BARS - 1].close - 1
+                row.from_high = last / max(c.close for c in candles[-YEAR_BARS:]) - 1
+                # 대시보드 신호와 같은 규칙 — 일봉이 모자란 기간은 뺌
+                for window, strategy in TREND_RULES:
+                    decision = strategy(candles)
+                    if decision.enough_data:
+                        row.trend.append(TrendOut(window=window, above=decision.target_weight > 0))
+            rows.append(row)
         return rows
 
     @app.get("/candles")

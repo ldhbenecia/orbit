@@ -21,6 +21,7 @@ EXAMPLE_MARKETS_PATH = REPO_ROOT / "config" / "markets.example.yaml"
 
 # 코인은 투자 정책상 BTC·ETH 고정
 COINS = (("KRW-BTC", "비트코인"), ("KRW-ETH", "이더리움"))
+COIN_MARKETS = [market for market, _ in COINS]
 
 _KRX_CODE = re.compile(r"[0-9][0-9A-Z]{5}")  # 국내 종목코드 6자리 (예: 0000A0 같은 신형 코드 포함)
 _US_TICKER = re.compile(r"[A-Z][A-Z.\-]{0,9}")
@@ -43,6 +44,11 @@ class Instrument:
     dca: bool = False  # 매달 적립 — 보유/현금 신호 대신 적립식 분석
     sector: str | None = None  # 관심 종목 분야
     next_open: NextOpenSpec | None = None
+
+    @property
+    def currency(self) -> Literal["KRW", "USD"]:
+        # 거래소가 통화를 정함 — 저장 키 앞부분이 거래소 (market_key)
+        return "USD" if self.market.startswith("US-") else "KRW"
 
 
 def market_key(symbol: str) -> tuple[str, ZoneInfo]:
@@ -94,12 +100,8 @@ class Universe:
     sectors: tuple[str, ...] = ()  # 관심 종목 분야 — 설정에 적은 순서
 
     def watchlist(self) -> list[Instrument]:
-        # 분야가 있는 종목을 분야 순서대로 (설정 순서, 없으면 처음 나온 순서)
-        order = list(self.sectors)
-        for i in self.instruments:
-            if i.sector is not None and i.sector not in order:
-                order.append(i.sector)
-        return [i for sector in order for i in self.instruments if i.sector == sector]
+        # 분야가 있는 종목을 설정에 적은 분야 순서대로
+        return [i for sector in self.sectors for i in self.instruments if i.sector == sector]
 
     def find(self, market: str) -> Instrument | None:
         return next((i for i in self.instruments if i.market == market), None)
@@ -121,6 +123,14 @@ def load_universe(path: Path = DEFAULT_MARKETS_PATH) -> Universe:
     return Universe()
 
 
+def _next_open(spec: _NextOpenConfig | None) -> NextOpenSpec | None:
+    # 근사 방법(같은 지수 미국 ETF·구성 종목)이 없으면 추정 대상이 아님
+    if spec is None or not (spec.proxy or spec.holdings):
+        return None
+    nav = (spec.nav.source, spec.nav.fund) if spec.nav else None
+    return NextOpenSpec(proxy=spec.proxy, holdings_fund=spec.holdings, nav=nav)
+
+
 def _build(config: _MarketsConfig) -> Universe:
     sectors: dict[str, str] = {}
     for sector, symbols in config.watchlist.items():
@@ -130,16 +140,7 @@ def _build(config: _MarketsConfig) -> Universe:
     seen: set[str] = set()
     for entry in config.dashboard:
         market, tz = market_key(entry.symbol)
-        spec = entry.next_open
-        next_open = (
-            NextOpenSpec(
-                proxy=spec.proxy,
-                holdings_fund=spec.holdings,
-                nav=(spec.nav.source, spec.nav.fund) if spec.nav else None,
-            )
-            if spec and (spec.proxy or spec.holdings)
-            else None
-        )
+        next_open = _next_open(entry.next_open)
         instruments.append(
             Instrument(
                 market, entry.symbol, tz, True, entry.dca, sectors.get(entry.symbol), next_open

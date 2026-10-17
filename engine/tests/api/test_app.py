@@ -288,43 +288,30 @@ def test_종목_목록은_코인_다음_설정_순서_이름을_못_받았으면
     assert by["US-QQQ"]["dashboard"] is False and by["US-QQQ"]["sector"] == "지수"
 
 
-def test_가상_데이터_모드는_실제_이름을_하나도_내보내지_않음(tmp_path: Path) -> None:
+def test_가상_데이터_DB_는_실제_이름을_하나도_내보내지_않음(tmp_path: Path) -> None:
+    from orbit.marketdata.demo import demo_names
+
     db = tmp_path / "orbit.sqlite"
-    conn = sqlite3.connect(db)
-    save_names(conn, [InstrumentName("US-SPY", "SPY", "SPDR S&P 500", "NYSE", "USD")], D)
-    conn.close()
     universe = Universe(
         (
             Instrument("US-SPY", "SPY", NEW_YORK, dashboard=True),
             Instrument("US-QQQ", "QQQ", NEW_YORK, sector="지수"),
-        )
+        ),
+        ("지수",),
     )
+    conn = sqlite3.connect(db)
+    save_names(conn, demo_names(universe), D)  # orbit demo-data 가 넣는 이름
+    conn.close()
 
     body = (
-        TestClient(create_app(lambda: sqlite3.connect(db), universe=universe, demo=True))
+        TestClient(create_app(lambda: sqlite3.connect(db), universe=universe))
         .get("/markets")
         .json()
     )
 
     names = [m["name"] for m in body]
     assert names == ["예시 코인 A", "예시 코인 B", "예시 종목 1", "예시 관심 종목 1"]
-    assert not any(
-        real in " ".join(names) for real in ("비트코인", "이더리움", "SPDR", "SPY", "QQQ")
-    )
-
-
-def test_규칙_검증은_기록이_없으면_비움(tmp_path: Path) -> None:
-    db = tmp_path / "orbit.sqlite"
-    client = TestClient(create_app(lambda: sqlite3.connect(db)))
-
-    assert client.get("/rule-checks", params={"market": "KRW-BTC"}).json() is None
-
-
-def test_가상_장부가_비어_있으면_빈_목록(tmp_path: Path) -> None:
-    db = tmp_path / "orbit.sqlite"
-    client = TestClient(create_app(lambda: sqlite3.connect(db)))
-
-    assert client.get("/wallet").json() == {"mode": "dry-run", "slots": []}
+    assert not any(real in " ".join(names) for real in ("비트코인", "이더리움", "SPY", "QQQ"))
 
 
 def _stock(market: str, closes: list[int]) -> list[Candle]:
@@ -357,7 +344,8 @@ def test_관심_종목은_분야_순서대로_고점_대비와_추세를_보여�
             Instrument("US-BBB", "BBB", NEW_YORK, sector="방산"),
             Instrument("US-CCC", "CCC", NEW_YORK, sector="테크"),  # 일봉 없음
             Instrument("US-DDD", "DDD", NEW_YORK, dashboard=True),  # 분야 없음 — 관심 종목 아님
-        )
+        ),
+        ("테크", "방산"),
     )
 
     body = (
@@ -383,3 +371,18 @@ def test_관심_종목은_분야_순서대로_고점_대비와_추세를_보여�
     assert expected == [False, False, True]  # 꺾인 직후 — 짧은 평균 아래, 긴 평균 위
     assert all(t["above"] is False for t in bbb["trend"])  # 계속 내린 종목은 모두 평균 아래
     assert ccc["close"] is None and ccc["trend"] == []
+    assert {r["currency"] for r in body} == {"USD"}
+
+
+def test_규칙_검증은_기록이_없으면_비움(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    client = TestClient(create_app(lambda: sqlite3.connect(db)))
+
+    assert client.get("/rule-checks", params={"market": "KRW-BTC"}).json() is None
+
+
+def test_가상_장부가_비어_있으면_빈_목록(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    client = TestClient(create_app(lambda: sqlite3.connect(db)))
+
+    assert client.get("/wallet").json() == {"mode": "dry-run", "slots": []}
