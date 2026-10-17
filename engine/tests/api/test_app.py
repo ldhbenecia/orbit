@@ -447,13 +447,25 @@ def test_추세_템플릿은_관심_종목과_종목_화면이_같고_상대강�
     slopes = dict(zip("ABCDE", (1, 2, 3, 4, 5), strict=True))
     for name, k in slopes.items():
         store.upsert(_stock(f"US-{name}", [100 + k * i for i in range(300)]), fetched_at=D)
+    # 비교에서 빠져야 하는 것: 국내 종목(원화·다른 거래일), 일봉이 끊긴 미국 종목
+    store.upsert(_stock("KRX-100000", [100 + 9 * i for i in range(300)]), fetched_at=D)
+    store.upsert(_stock("US-OLD", [100 + 9 * i for i in range(280)]), fetched_at=D)
     store.close()
     universe = Universe(
-        tuple(Instrument(f"US-{n}", n, NEW_YORK, sector="테크") for n in slopes), ("테크",)
+        (
+            *(Instrument(f"US-{n}", n, NEW_YORK, sector="테크") for n in slopes),
+            Instrument("KRX-100000", "100000", SEOUL, sector="국내"),
+            Instrument("US-OLD", "OLD", NEW_YORK, dashboard=True),
+        ),
+        ("테크", "국내"),
     )
     client = TestClient(create_app(lambda: sqlite3.connect(db), universe=universe))
 
-    rows = {r["market"]: r["template"] for r in client.get("/watchlist").json()}
+    rows = {
+        r["market"]: r["template"]
+        for r in client.get("/watchlist").json()
+        if r["market"].startswith("US-")
+    }
     page = client.get("/trend-template", params={"market": "US-E"}).json()
 
     assert rows["US-E"] == page
@@ -463,7 +475,8 @@ def test_추세_템플릿은_관심_종목과_종목_화면이_같고_상대강�
     # 나보다 낮은 종목 비율 0, ¼, ½, ¾, 1 — 0.7 이상은 D·E
     assert strong == {"US-A": False, "US-B": False, "US-C": False, "US-D": True, "US-E": True}
     assert (page["passed"], page["known"], page["peers"]) == (8, 8, 5)
-    assert client.get("/trend-template", params={"market": "KRW-BTC"}).json() is None
+    for other in ("KRW-BTC", "KRX-100000"):
+        assert client.get("/trend-template", params={"market": other}).json() is None
 
 
 def test_규칙_검증은_기록이_없으면_비움(tmp_path: Path) -> None:

@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import type { components } from "@/lib/api";
 import { engineJson } from "@/lib/engine";
 import { rankLabel } from "@/components/fundamentals-card";
-import { CHECK_LABEL } from "@/components/trend-template-card";
+import { CHECK_LABEL, checkState } from "@/components/trend-template-card";
 import { formatDate, formatMultiple, formatPercent1, formatPrice } from "@/lib/format";
 import { DEMO, type MarketInfo } from "@/lib/markets";
 import { tone } from "@/lib/summary";
@@ -138,7 +138,7 @@ function WatchRow({ row, info }: { row: Row; info: MarketInfo | undefined }) {
           <span
             className="block whitespace-nowrap text-[11px] text-muted"
             title={row.template.checks
-              .map((c) => `${CHECK_LABEL[c.check]}: ${c.passed === null ? "모름" : c.passed ? "충족" : "아님"}`)
+              .map((c) => `${CHECK_LABEL[c.check]}: ${checkState(c.passed)}`)
               .join("\n")}
           >
             템플릿 {row.template.passed}/{row.template.known}

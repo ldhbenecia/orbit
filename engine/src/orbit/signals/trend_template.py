@@ -50,6 +50,13 @@ def trend_template(
     }
 
 
+def year_return(candles: Sequence[Candle]) -> Decimal | None:
+    # 약 1년(252거래일) 전 종가 대비 — 관심 종목 1년 수익과 상대강도가 같은 정의를 씀
+    if len(candles) <= YEAR_BARS:
+        return None
+    return candles[-1].close / candles[-YEAR_BARS - 1].close - 1
+
+
 def strength_ranks(returns: Mapping[str, Decimal]) -> dict[str, Decimal]:
     # 1년 수익률이 나보다 낮은 종목 비율 0~1 — 비교 종목이 적으면 비움
     if len(returns) < RS_MIN_PEERS:

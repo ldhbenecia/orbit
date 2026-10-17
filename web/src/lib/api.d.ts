@@ -682,6 +682,8 @@ export interface components {
             checks: components["schemas"]["TemplateCheckOut"][];
             /** Peers */
             peers: number;
+            /** Peers Min */
+            peers_min: number;
         };
         /** ValidationError */
         ValidationError: {

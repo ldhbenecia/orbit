@@ -38,9 +38,7 @@ export default async function Page(props: PageProps<"/">) {
     // 미국 기업 공시 — ETF·해외 공시 기업은 엔진이 비워 보냄
     usStock ? engineJson<components["schemas"]["FundamentalsOut"] | null>(`/fundamentals?market=${market}`) : null,
     usStock ? engineJson<components["schemas"]["PaydayOut"] | null>(`/payday?market=${market}`) : null,
-    info.group === "stock"
-      ? engineJson<components["schemas"]["TrendTemplateOut"] | null>(`/trend-template?market=${market}`)
-      : null,
+    usStock ? engineJson<components["schemas"]["TrendTemplateOut"] | null>(`/trend-template?market=${market}`) : null,
   ]);
   const slots = wallet?.slots.filter((s) => s.market === market) ?? [];
 

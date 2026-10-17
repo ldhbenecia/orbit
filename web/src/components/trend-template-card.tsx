@@ -15,8 +15,10 @@ export const CHECK_LABEL: Record<Check, string> = {
   above_50: "주가가 50일 평균 위",
   above_low: "1년 최저가보다 30% 이상 위",
   near_high: "1년 최고가에서 25% 이내",
-  strong: "1년 수익률이 등록한 종목 중 상위 30%",
+  strong: "1년 수익률이 등록한 미국 종목 중 상위 30%",
 };
+
+export const checkState = (passed: boolean | null) => (passed === null ? "모름" : passed ? "충족" : "아님");
 
 // 사라·말라가 아니라 "지금 상승 추세 조건을 몇 개 갖췄나" — 손익이 아니라 색을 쓰지 않음
 export function TrendTemplateCard({ info, data }: { info: MarketInfo; data: Template }) {
@@ -35,7 +37,7 @@ export function TrendTemplateCard({ info, data }: { info: MarketInfo; data: Temp
           <li key={c.check} className="flex items-baseline justify-between gap-3">
             <span className={c.passed ? "" : "text-muted"}>{CHECK_LABEL[c.check]}</span>
             <span className="shrink-0 text-xs text-muted">
-              {c.passed === null ? "모름" : c.passed ? "충족" : "아님"}
+              {checkState(c.passed)}
             </span>
           </li>
         ))}
@@ -44,9 +46,9 @@ export function TrendTemplateCard({ info, data }: { info: MarketInfo; data: Temp
       <RuleStory story="template" />
 
       <p className="text-xs leading-relaxed text-muted">
-        상대강도는 등록한 주식 {data.peers}개끼리 1년 수익률을 비교했어요
-        {data.peers < 5 ? " — 5개보다 적어 판단하지 않았어요" : ""}. 조건을 많이 갖춘 건 이미 오른 종목이라는 뜻이지
-        사라는 뜻이 아니에요.
+        상대강도는 등록한 미국 종목(ETF 포함) {data.peers}개끼리 1년 수익률을 비교했어요
+        {data.peers < data.peers_min ? ` — ${data.peers_min}개보다 적어 판단하지 않았어요` : ""}. 조건을 많이 갖춘 건 이미
+        오른 종목이라는 뜻이지 사라는 뜻이 아니에요.
       </p>
     </section>
   );
