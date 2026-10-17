@@ -17,7 +17,7 @@
 | 재무 값 | `https://data.sec.gov/api/xbrl/companyfacts/CIK##########.json` (10자리) |
 | 요청 조건 | 요청마다 연락처(이름·이메일)를 담은 User-Agent. **초당 10회 이하** — 넘으면 IP 가 막힘 |
 | 설정 | `.env` 의 `SEC_USER_AGENT="Your Name you@example.com"` — HTTP 헤더라 **영문만** (개인정보라 레포에 두지 않음) |
-| 실행 | `uv run orbit sync-fundamentals` — 요청 사이 0.15초 쉼 |
+| 실행 | `uv run orbit sync-fundamentals` — 요청 사이 0.15초 쉼. 하루 안에 받은 종목은 건너뜀 (분기 공시라) |
 
 ## 계산 규칙
 

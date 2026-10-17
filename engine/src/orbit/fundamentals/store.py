@@ -52,3 +52,12 @@ def load_snapshots(conn: sqlite3.Connection, market: str) -> list[Snapshot]:
         (market,),
     ).fetchall()
     return [Snapshot(_day(r[0]), _day(r[1]), *r[2:]) for r in rows]
+
+
+def fetched_since(conn: sqlite3.Connection, since: datetime) -> set[str]:
+    migrate(conn)
+    rows = conn.execute(
+        "SELECT market FROM fundamentals GROUP BY market HAVING MAX(fetched_ts) >= ?",
+        (int(since.timestamp()),),
+    ).fetchall()
+    return {row[0] for row in rows}

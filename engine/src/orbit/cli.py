@@ -24,9 +24,9 @@ from orbit.backtest.runs import RunSpec, save_run
 from orbit.backtest.validate import check_rules, save_checks, specs_for
 from orbit.brokers.dry_run import DryRunBroker
 from orbit.estimate.live import NextOpenView, build_view
-from orbit.fundamentals.edgar import edgar_symbol, fetch_facts, fetch_tickers
+from orbit.fundamentals.edgar import edgar_symbol, fetch_facts, fetch_tickers, has_share_class
 from orbit.fundamentals.snapshot import snapshots
-from orbit.fundamentals.store import save_snapshots
+from orbit.fundamentals.store import fetched_since, save_snapshots
 from orbit.ledger.book import Ledger
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.demo import demo_candles, demo_names, demo_snapshots
@@ -527,15 +527,26 @@ def _sync_stocks(db: Path) -> None:
     store.close()
 
 
+SEC_INTERVAL = 0.15  # SEC 는 초당 10회 이하만 허용
+# 분기 공시라 하루 안에 다시 받을 일이 거의 없음 — 대시보드를 열 때마다 수십 MB 를 받지 않게
+FUNDAMENTALS_FRESH = timedelta(days=1)
+
+
 def _sync_fundamentals(db: Path) -> None:
     settings = Settings()
     if settings.sec_user_agent is None:
         log.error(".env 에 SEC_USER_AGENT 가 없음 — SEC 는 연락처(이름 이메일)를 요구함")
         return
-    stocks = [i for i in load_universe().instruments if i.currency == "USD"]
     headers = {"User-Agent": settings.sec_user_agent.get_secret_value()}
     conn = sqlite3.connect(db)
     try:
+        fresh = fetched_since(conn, datetime.now(UTC) - FUNDAMENTALS_FRESH)
+        stocks = [
+            i for i in load_universe().instruments if i.currency == "USD" and i.market not in fresh
+        ]
+        if not stocks:
+            log.info("재무는 하루 안에 받은 것 그대로")
+            return
         with httpx.Client(headers=headers, timeout=30) as client:
             ciks = fetch_tickers(client)
             for instrument in stocks:
@@ -545,10 +556,10 @@ def _sync_fundamentals(db: Path) -> None:
                     continue
                 time.sleep(SEC_INTERVAL)
                 try:
-                    # 종목코드에 주식 종류가 붙은 상장주(EXA.B)는 1주 가치가 종류마다 다를 수 있어
-                    # 회사 전체 가중평균 주식 수와 가격을 곱하지 않음
+                    # 주식 종류가 붙은 상장주는 회사 전체 가중평균 주식 수와 가격을 곱하지 않음
                     snaps = snapshots(
-                        fetch_facts(client, cik), weighted_fallback="." not in instrument.symbol
+                        fetch_facts(client, cik),
+                        weighted_fallback=not has_share_class(instrument.symbol),
                     )
                 except httpx.HTTPError as error:
                     # 한 회사가 실패해도 나머지는 받음 — 시세와 무관한 참고 정보
@@ -594,7 +605,6 @@ def _kr_calendar(api: TossMarketData) -> Callable[[date], date]:
 
 
 # 토스 호출이 종목당 10번 넘게 일어남 — 시세 갱신 주기(1분)만큼만 재사용
-SEC_INTERVAL = 0.15  # SEC 는 초당 10회 이하만 허용
 TOSS_BATCH = 200  # 토스 종목 정보 한 번에 최대 200개
 NEXT_OPEN_TTL = timedelta(minutes=1)
 NAV_TTL = timedelta(minutes=10)

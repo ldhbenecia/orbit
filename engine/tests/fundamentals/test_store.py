@@ -1,8 +1,8 @@
 import sqlite3
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from orbit.fundamentals.snapshot import Snapshot
-from orbit.fundamentals.store import load_snapshots, save_snapshots
+from orbit.fundamentals.store import fetched_since, load_snapshots, save_snapshots
 
 NOW = datetime(2026, 10, 17, tzinfo=UTC)
 
@@ -26,3 +26,12 @@ def test_종목_단위로_통째로_바꿈() -> None:
         snap(date(2026, 11, 5), None),
     ]
     assert load_snapshots(conn, "US-EXB") == [snap(date(2026, 8, 5), 7)]
+
+
+def test_기준_시각_이후에_받은_종목만_새것으로_봄() -> None:
+    conn = sqlite3.connect(":memory:")
+    save_snapshots(conn, "US-OLD", [snap(date(2026, 8, 5), 1)], NOW - timedelta(days=2))
+    save_snapshots(conn, "US-NEW", [snap(date(2026, 8, 5), 1)], NOW - timedelta(hours=1))
+    save_snapshots(conn, "US-EDGE", [snap(date(2026, 8, 5), 1)], NOW - timedelta(days=1))
+
+    assert fetched_since(conn, NOW - timedelta(days=1)) == {"US-NEW", "US-EDGE"}
