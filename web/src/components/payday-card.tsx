@@ -1,16 +1,18 @@
 import type { components } from "@/lib/api";
 import { formatDate, formatPercent1, formatUsdWhole } from "@/lib/format";
+import { RuleStory } from "@/components/rule-story";
 import type { MarketInfo } from "@/lib/markets";
+import type { StoryKey } from "@/lib/rule-stories";
 import { tone } from "@/lib/summary";
 
 type Payday = components["schemas"]["PaydayOut"];
 type Rule = components["schemas"]["PaydayRuleOut"]["rule"];
 
 // 규칙마다 이름과 한 줄 설명 — 규칙이 늘면 여기서 타입 검사가 깨짐
-const RULES: Record<Rule, { label: string; how: string }> = {
-  plain: { label: "단순 적립", how: "매달 들어온 돈을 전부 삼" },
-  dip: { label: "떨어지면 더", how: "평소엔 절반만, 52주 고점 대비 −20% 이하면 모아 둔 돈까지" },
-  trend: { label: "추세 아래면 대기", how: "200거래일 평균 아래면 모아 두고, 위로 오면 전부" },
+const RULES: Record<Rule, { label: string; how: string; story: StoryKey }> = {
+  plain: { label: "단순 적립", how: "매달 들어온 돈을 전부 삼", story: "dca" },
+  dip: { label: "떨어지면 더", how: "평소엔 절반만, 52주 고점 대비 −20% 이하면 모아 둔 돈까지", story: "dip" },
+  trend: { label: "추세 아래면 대기", how: "200거래일 평균 아래면 모아 두고, 위로 오면 전부", story: "ma" },
 };
 
 // 같은 돈을 같은 날 넣었을 때 규칙만 다르면 어땠는지 — 과거 결과, 앞으로가 아님
@@ -46,6 +48,7 @@ export function PaydayCard({ info, data }: { info: MarketInfo; data: Payday }) {
                 {r.beat_plain !== null &&
                   ` · 5년 구간 ${data.windows}개 중 ${Math.round(Number(r.beat_plain) * 100)}% 에서 단순 적립보다 많음`}
               </p>
+              <RuleStory story={RULES[r.rule].story} />
             </li>
           );
         })}

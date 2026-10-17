@@ -16,6 +16,7 @@
 - **관심 종목** — 분야별로 가격·1년 수익·52주 고점 대비·추세(이동평균 위/아래)·PER 과 지난 5년 중 위치. 사라·말라 대신 사실만
 - **미국 기업 재무** — SEC 공시로 PER·PBR·ROE·FCF 수익률·매출 성장 (최근 4분기, 공시 시점 기준)
 - **월급날 규칙 비교** — 같은 돈을 매달 넣을 때 단순 적립·떨어지면 더·추세 아래면 대기가 어땠는지, 5년 구간마다 누가 나았는지
+- **규칙의 배경** — 규칙마다 "이 규칙은 어디서 왔나요?" 를 펼치면 누구의 어떤 생각인지, 언제 깨지는지, 2020년대 근거
 - **오늘의 규칙 신호** — 규칙마다 보유·현금·돌파 여부, 며칠째인지, 지금 가격이 평균보다 얼마나 높은지·낮은지. 맨 위에 "규칙 N개 중 M개가 매수 쪽"
 - **다음 개장 예상** — 국내 상장 미국 ETF 는 국내 장이 닫힌 뒤 미국장·환율 변동을 반영해 다음 날 시가를 추정
 - **적립식 분석** — 매달 정해진 날 적립하는 ETF 용. 다음 적립일, 지금 가격이 평균보다 싼지, 그렇게 사 왔다면 어땠는지
@@ -90,7 +91,7 @@ cp config/orbit.example.yaml config/orbit.local.yaml      # 가상 지갑을 쓰
 ## 문서
 
 - [orbit 이 쓰는 규칙](docs/knowledge/orbit-rules.md) — 한 줄 요약, 공통 가정, 전략별 규칙·결과, 신호·적립식 계산
-- [투자 규칙 카탈로그](docs/knowledge/strategies.md) · [연구 목록](docs/knowledge/research.md) · [학습 경로](docs/knowledge/learning-path.md) · [리스크 관리](docs/knowledge/risk-management.md) · [백테스트 함정](docs/knowledge/backtest-pitfalls.md) · [용어집](docs/knowledge/glossary.md)
+- [투자 방법론 — 누가, 어떤 생각으로, 지금도 통하나](docs/knowledge/methods.md) · [투자 규칙 카탈로그](docs/knowledge/strategies.md) · [연구 목록](docs/knowledge/research.md) · [학습 경로](docs/knowledge/learning-path.md) · [리스크 관리](docs/knowledge/risk-management.md) · [백테스트 함정](docs/knowledge/backtest-pitfalls.md) · [용어집](docs/knowledge/glossary.md)
 - [업비트 KRW 마켓 규칙](docs/knowledge/upbit-krw-market.md) · [토스증권 Open API](docs/knowledge/toss-open-api.md) · [토스증권 수수료](docs/knowledge/toss-fees.md) · [SEC 재무 공시](docs/knowledge/sec-edgar.md)
 
 ## 라이선스

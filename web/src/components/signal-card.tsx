@@ -1,7 +1,9 @@
 import type { components } from "@/lib/api";
 import { type Currency, formatDate, formatPrice } from "@/lib/format";
 import type { MarketInfo } from "@/lib/markets";
-import { ruleDescription, ruleParam, ruleShortName } from "@/lib/rules";
+import { RuleStory } from "@/components/rule-story";
+import type { StoryKey } from "@/lib/rule-stories";
+import { ruleDescription, ruleParam, ruleShortName, ruleStory } from "@/lib/rules";
 import { buySideCount, judged, STANCE } from "@/lib/summary";
 
 type Signals = components["schemas"]["SignalsOut"];
@@ -33,9 +35,12 @@ export function SignalCard({ info, data }: { info: MarketInfo; data: Signals }) 
       </div>
 
       <ul className="divide-y divide-border">
-        {data.signals.map((s) => (
-          <SignalRow key={s.strategy} signal={s} info={info} />
-        ))}
+        {data.signals.map((s, i) => {
+          // 같은 계열(60·120·200일 평균)은 설명이 같아 첫 줄에만
+          const story = ruleStory(s.strategy);
+          const first = data.signals.findIndex((o) => ruleStory(o.strategy) === story) === i;
+          return <SignalRow key={s.strategy} signal={s} info={info} story={first ? story : null} />;
+        })}
       </ul>
 
       <p className="text-xs leading-relaxed text-muted">
@@ -45,7 +50,7 @@ export function SignalCard({ info, data }: { info: MarketInfo; data: Signals }) 
   );
 }
 
-function SignalRow({ signal, info }: { signal: Signal; info: MarketInfo }) {
+function SignalRow({ signal, info, story }: { signal: Signal; info: MarketInfo; story: StoryKey | null }) {
   const currency: Currency = info.currency;
   const price = (value: string) => formatPrice(Number(value), currency);
   const stance = STANCE[signal.stance];
@@ -72,6 +77,7 @@ function SignalRow({ signal, info }: { signal: Signal; info: MarketInfo }) {
           </span>
         </p>
       ) : null}
+      {story && <RuleStory story={story} />}
     </li>
   );
 }

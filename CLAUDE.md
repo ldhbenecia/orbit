@@ -103,6 +103,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 - [docs/knowledge/orbit-rules.md](docs/knowledge/orbit-rules.md) — **orbit 이 실제로 쓰는 규칙**·상태·백테스트 결과 (전략·공통 규칙을 바꾸면 같이 갱신)
 - [docs/knowledge/strategies.md](docs/knowledge/strategies.md) — 알려진 투자 규칙·전략 카탈로그 (근거 수준·구현 난이도)
+- [docs/knowledge/methods.md](docs/knowledge/methods.md) — 투자 방법론을 누가·어떤 생각으로·지금도 통하나 (대시보드 "어디서 왔나요?" 의 원본)
 - [docs/knowledge/research.md](docs/knowledge/research.md) — 해외 연구 → orbit 에서 검증할 가설과 상태 (새 규칙은 여기서 고름)
 - [docs/knowledge/risk-management.md](docs/knowledge/risk-management.md) — 자금·리스크 관리 규칙
 - [docs/knowledge/backtest-pitfalls.md](docs/knowledge/backtest-pitfalls.md) — 백테스트 함정

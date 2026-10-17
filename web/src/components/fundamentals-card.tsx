@@ -1,5 +1,6 @@
 import type { components } from "@/lib/api";
 import { formatDate, formatMultiple, formatPercent1, formatRatio } from "@/lib/format";
+import { RuleStory } from "@/components/rule-story";
 import type { MarketInfo } from "@/lib/markets";
 
 type Fundamentals = components["schemas"]["FundamentalsOut"];
@@ -52,6 +53,8 @@ export function FundamentalsCard({ info, data }: { info: MarketInfo; data: Funda
           hint="최근 4분기 매출 ÷ 1년 전 최근 4분기 매출 − 1"
         />
       </div>
+
+      <RuleStory story="value" label="PER·PBR 로 싸고 비싼 걸 보는 생각은 어디서 왔나요?" />
 
       <p className="text-xs leading-relaxed text-muted">
         {formatDate(data.period_end)}까지 최근 4분기 · {formatDate(data.filed)} 공시 (SEC) · {formatDate(data.as_of)} 종가
