@@ -63,3 +63,21 @@ def test_이름_캐시는_다시_받으면_덮어씀(tmp_path: Path) -> None:
     save_names(conn, [InstrumentName("US-SPY", "SPY", "SPY", "NYSE", "USD")], now)
 
     assert load_names(conn)["US-SPY"].name == "SPY"
+
+
+def test_관심_종목은_설정에_적은_분야_순서대로(tmp_path: Path) -> None:
+    # 대시보드 종목이 뒤쪽 분야에 있어도 분야 순서는 설정 순서
+    config = """
+dashboard:
+  - symbol: CCC
+watchlist:
+  첫째: [AAA]
+  둘째: [CCC, BBB]
+"""
+    universe = load_universe(_write(tmp_path, config))
+
+    assert [(i.symbol, i.sector) for i in universe.watchlist()] == [
+        ("AAA", "첫째"),
+        ("CCC", "둘째"),
+        ("BBB", "둘째"),
+    ]

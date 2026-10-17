@@ -325,3 +325,61 @@ def test_가상_장부가_비어_있으면_빈_목록(tmp_path: Path) -> None:
     client = TestClient(create_app(lambda: sqlite3.connect(db)))
 
     assert client.get("/wallet").json() == {"mode": "dry-run", "slots": []}
+
+
+def _stock(market: str, closes: list[int]) -> list[Candle]:
+    start = datetime(2025, 1, 1, tzinfo=UTC)
+    return [
+        Candle(
+            market,
+            start + timedelta(days=i),
+            Decimal(c),
+            Decimal(c),
+            Decimal(c),
+            Decimal(c),
+            Decimal(1),
+        )
+        for i, c in enumerate(closes)
+    ]
+
+
+def test_관심_종목은_분야_순서대로_고점_대비와_추세를_보여줌(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    store = CandleStore.open(db)
+    # 오르다 꺾임: 100 → 300 까지 오른 뒤 240 — 52주 고점 대비 −20%
+    rising = list(range(100, 301, 1)) + [280, 260, 240]
+    falling = list(range(300, 99, -1))
+    store.upsert(_stock("US-AAA", rising) + _stock("US-BBB", falling), fetched_at=D)
+    store.close()
+    universe = Universe(
+        (
+            Instrument("US-AAA", "AAA", NEW_YORK, sector="테크"),
+            Instrument("US-BBB", "BBB", NEW_YORK, sector="방산"),
+            Instrument("US-CCC", "CCC", NEW_YORK, sector="테크"),  # 일봉 없음
+            Instrument("US-DDD", "DDD", NEW_YORK, dashboard=True),  # 분야 없음 — 관심 종목 아님
+        )
+    )
+
+    body = (
+        TestClient(create_app(lambda: sqlite3.connect(db), universe=universe))
+        .get("/watchlist")
+        .json()
+    )
+
+    assert [(r["market"], r["sector"]) for r in body] == [
+        ("US-AAA", "테크"),
+        ("US-CCC", "테크"),
+        ("US-BBB", "방산"),
+    ]
+    aaa, ccc, bbb = body
+    assert Decimal(aaa["from_high"]) == Decimal("-0.2")  # 240 ÷ 300 − 1
+    assert Decimal(aaa["change"]) == Decimal(240) / Decimal(260) - 1
+    # 추세 표시는 신호에 쓰는 이동평균 규칙 함수의 판단과 같아야 함 (두 계산 일치)
+    history = _stock("US-AAA", rising)
+    expected = [build_strategy(f"ma-{w}")[0](history).target_weight > 0 for w in (60, 120, 200)]
+    assert [(t["window"], t["above"]) for t in aaa["trend"]] == list(
+        zip((60, 120, 200), expected, strict=True)
+    )
+    assert expected == [False, False, True]  # 꺾인 직후 — 짧은 평균 아래, 긴 평균 위
+    assert all(t["above"] is False for t in bbb["trend"])  # 계속 내린 종목은 모두 평균 아래
+    assert ccc["close"] is None and ccc["trend"] == []

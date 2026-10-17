@@ -24,6 +24,7 @@ from orbit.marketdata.names import load_names
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.upbit_ticker import Ticker
 from orbit.signals.today import Stance, is_upbit_market, today_signals
+from orbit.strategies.registry import build_strategy
 
 
 class MarketOut(BaseModel):
@@ -35,6 +36,22 @@ class MarketOut(BaseModel):
     dca: bool = False  # 매달 적립 — 적립식 분석
     next_open: bool = False  # 다음 개장 추정 대상
     sector: str | None = None  # 관심 종목 분야
+
+
+class TrendOut(BaseModel):
+    window: int  # 이동평균 기간 (거래일)
+    above: bool  # 이동평균 규칙이 보유 쪽 — 신호와 같은 규칙 함수
+
+
+class WatchRowOut(BaseModel):
+    market: str
+    sector: str
+    as_of: date | None  # 마지막 확정 봉
+    close: Decimal | None
+    change: Decimal | None  # 전일 종가 대비
+    return_1y: Decimal | None  # 약 1년(252거래일) 전 종가 대비
+    from_high: Decimal | None  # 최근 52주 최고 종가 대비 (0 이하)
+    trend: list[TrendOut]
 
 
 class CandleOut(BaseModel):
@@ -195,6 +212,8 @@ log = logging.getLogger(__name__)
 
 DCA_EXAMPLE_MONTHLY = Decimal(1_000_000)
 POSITION_WINDOWS = (60, 120)
+TREND_WINDOWS = (60, 120, 200)  # 신호에 쓰는 이동평균 규칙과 같은 기간
+YEAR_BARS = 252  # 주식 1년 거래일
 
 
 def _weekday_only(day: date) -> date:
@@ -291,6 +310,50 @@ def create_app(
                 )
             )
         return out
+
+    @app.get("/watchlist")
+    def watchlist() -> list[WatchRowOut]:
+        # 관심 종목 — 사라·말라가 아니라 사실(가격 위치·추세)만
+        rows = []
+        for instrument in universe.watchlist():
+            assert instrument.sector is not None
+            candles = load_candles(instrument.market)
+            if len(candles) < 2:
+                rows.append(
+                    WatchRowOut(
+                        market=instrument.market,
+                        sector=instrument.sector,
+                        as_of=None,
+                        close=None,
+                        change=None,
+                        return_1y=None,
+                        from_high=None,
+                        trend=[],
+                    )
+                )
+                continue
+            last = candles[-1].close
+            year = candles[-YEAR_BARS:]
+            trend = []
+            for window in TREND_WINDOWS:
+                decision = build_strategy(f"ma-{window}")[0](candles)
+                if decision.enough_data:
+                    trend.append(TrendOut(window=window, above=decision.target_weight > 0))
+            rows.append(
+                WatchRowOut(
+                    market=instrument.market,
+                    sector=instrument.sector,
+                    as_of=candles[-1].start.date(),
+                    close=last,
+                    change=last / candles[-2].close - 1,
+                    return_1y=last / candles[-YEAR_BARS - 1].close - 1
+                    if len(candles) > YEAR_BARS
+                    else None,
+                    from_high=last / max(c.close for c in year) - 1,
+                    trend=trend,
+                )
+            )
+        return rows
 
     @app.get("/candles")
     def candles(

@@ -91,6 +91,15 @@ class _MarketsConfig(BaseModel):
 @dataclass(frozen=True, slots=True)
 class Universe:
     instruments: tuple[Instrument, ...] = field(default_factory=tuple)
+    sectors: tuple[str, ...] = ()  # 관심 종목 분야 — 설정에 적은 순서
+
+    def watchlist(self) -> list[Instrument]:
+        # 분야가 있는 종목을 분야 순서대로 (설정 순서, 없으면 처음 나온 순서)
+        order = list(self.sectors)
+        for i in self.instruments:
+            if i.sector is not None and i.sector not in order:
+                order.append(i.sector)
+        return [i for sector in order for i in self.instruments if i.sector == sector]
 
     def find(self, market: str) -> Instrument | None:
         return next((i for i in self.instruments if i.market == market), None)
@@ -142,4 +151,4 @@ def _build(config: _MarketsConfig) -> Universe:
             continue
         market, tz = market_key(symbol)
         instruments.append(Instrument(market, symbol, tz, sector=sector))
-    return Universe(tuple(instruments))
+    return Universe(tuple(instruments), tuple(config.watchlist))
