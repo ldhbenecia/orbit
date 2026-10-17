@@ -14,12 +14,14 @@ from orbit.api.app import create_app
 from orbit.backtest.engine import DEFAULT_CONFIG, Funding, run_backtest
 from orbit.backtest.metrics import compute_metrics
 from orbit.backtest.runs import RunSpec, save_run
+from orbit.dca.payday import compare
 from orbit.fundamentals.snapshot import Snapshot
 from orbit.fundamentals.store import save_snapshots
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.instruments import NEW_YORK, SEOUL, Instrument, NextOpenSpec, Universe
 from orbit.marketdata.names import InstrumentName, save_names
 from orbit.marketdata.store import CandleStore
+from orbit.marketdata.toss_rules import us_fee
 from orbit.marketdata.upbit_ticker import Ticker
 from orbit.strategies.registry import build_strategy
 from tests.backtest.test_engine import candles
@@ -403,6 +405,37 @@ def test_재무는_공시가_있는_종목만_관심_종목과_종목_화면이_
     assert page["per_5y"] is None  # 비교할 과거 달이 없음
     assert bbb["fundamentals"] is None
     assert client.get("/fundamentals", params={"market": "US-BBB"}).json() is None
+
+
+def test_월급날_규칙은_미국_주식만_계산하고_엔진_비교와_같은_값(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    store = CandleStore.open(db)
+    closes = [100 + (i % 90) for i in range(500)]  # 오르내림 — 52주 고점 대비 −20% 아래로도 감
+    store.upsert(_stock("US-AAA", closes) + _stock("KRX-100000", closes), fetched_at=D)
+    store.close()
+    universe = Universe(
+        (
+            Instrument("US-AAA", "AAA", NEW_YORK, sector="테크"),
+            Instrument("KRX-100000", "100000", SEOUL, sector="국내"),
+        ),
+        ("테크", "국내"),
+    )
+    client = TestClient(create_app(lambda: sqlite3.connect(db), universe=universe))
+
+    body = client.get("/payday", params={"market": "US-AAA"}).json()
+    expected = compare(
+        _stock("US-AAA", closes), Decimal(1000), lambda amount: us_fee(amount, "buy")
+    )
+
+    assert expected is not None
+    assert [r["rule"] for r in body["rules"]] == ["plain", "dip", "trend"]
+    for r in body["rules"]:
+        full = expected.full[r["rule"]]
+        assert Decimal(r["final_value"]) == full.final_value
+        assert Decimal(r["invested"]) == full.invested
+    assert body["rules"][0]["beat_plain"] is None
+    assert client.get("/payday", params={"market": "KRX-100000"}).json() is None
+    assert client.get("/payday", params={"market": "KRW-BTC"}).json() is None
 
 
 def test_규칙_검증은_기록이_없으면_비움(tmp_path: Path) -> None:
