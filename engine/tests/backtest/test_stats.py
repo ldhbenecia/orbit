@@ -19,10 +19,13 @@ def test_정규분포면_치우침_0_뾰족함_3_근처() -> None:
 
 
 def test_시험을_많이_할수록_우연이_아닐_확률이_낮아짐() -> None:
-    args = {"sr": 0.05, "n_obs": 2000, "skew": 0.0, "kurt": 3.0, "sr_variance": 0.0004}
+    def probability(trials: int) -> float:
+        return deflated_sharpe(
+            sr=0.05, n_obs=2000, skew=0.0, kurt=3.0, trials=trials, sr_variance=0.0004
+        )
 
-    one = deflated_sharpe(trials=1, **args)
-    many = deflated_sharpe(trials=50, **args)
+    one = probability(1)
+    many = probability(50)
 
     assert 0.9 < one < 1  # 하나만 시험했다면 충분히 우연이 아님
     assert many < one
