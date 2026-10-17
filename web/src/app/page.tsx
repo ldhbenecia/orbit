@@ -11,12 +11,13 @@ import { type CandleOut, toChartCandle } from "@/lib/candles";
 import { engineJson } from "@/lib/engine";
 import { findMarket } from "@/lib/markets";
 import { verdictOf } from "@/lib/overview";
+import { getMarkets } from "@/lib/universe";
 
 const RECENT_DAILY = 750; // 처음 화면엔 최근 약 2~3년 일봉만 — 나머지는 과거로 밀 때 받음
 
 export default async function Page(props: PageProps<"/">) {
   await connection();
-  const info = findMarket((await props.searchParams).market);
+  const info = findMarket(await getMarkets(), (await props.searchParams).market);
   const market = info.market;
   const [candles, summary, runs, verdict, nextOpen, checks, wallet] = await Promise.all([
     engineJson<CandleOut[]>(`/candles?market=${market}&interval=day&limit=${RECENT_DAILY}`),
@@ -24,7 +25,7 @@ export default async function Page(props: PageProps<"/">) {
     engineJson<components["schemas"]["RunOut"][]>(`/backtests?market=${market}`),
     verdictOf(info),
     // 국내 상장 미국 ETF 만 — 엔진이 대상이 아니면 비워 보냄
-    market.startsWith("KRX-")
+    info.nextOpen
       ? engineJson<components["schemas"]["NextOpenOut"] | null>(`/next-open?market=${market}`)
       : null,
     info.core ? null : engineJson<components["schemas"]["RuleChecksOut"] | null>(`/rule-checks?market=${market}`),

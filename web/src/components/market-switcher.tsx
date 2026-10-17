@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState, useTransition } from "react";
 
 import { type Currency, formatPercent, formatPrice } from "@/lib/format";
-import { findMarket, GROUPS, MARKETS } from "@/lib/markets";
+import { GROUPS, type MarketInfo } from "@/lib/markets";
 import { type Line, tone } from "@/lib/summary";
 
 export type Tile = {
@@ -18,17 +18,20 @@ const groupLabel = (value: string) => GROUPS.find((g) => g.value === value)?.lab
 
 // 서버가 새 종목 화면을 그리는 동안에도 선택 표시는 바로 움직이고, 아래 내용은 흐리게 — 눌렀는데 반응이 없다고 느끼지 않게
 export function MarketSwitcher({
+  markets,
   tiles,
   children,
 }: {
+  markets: readonly MarketInfo[]; // 타일에 보일 종목 — 엔진의 종목 설정에서
   tiles: Partial<Record<string, Tile>>;
   children: ReactNode;
 }) {
   const router = useRouter();
-  const current = findMarket(useSearchParams().get("market") ?? undefined).market;
+  // 관심 종목처럼 타일에 없는 종목을 보고 있으면 아무 타일도 선택하지 않음
+  const current = useSearchParams().get("market") ?? markets[0]?.market ?? "";
   const [pending, startTransition] = useTransition();
   const [chosen, setChosen] = useState<string | null>(null);
-  const selected = findMarket(pending && chosen ? chosen : current).market;
+  const selected = pending && chosen ? chosen : current;
 
   const go = (market: string) => {
     if (market === current) return;
@@ -41,11 +44,11 @@ export function MarketSwitcher({
     <div className="space-y-8">
       <div
         className="no-scrollbar -mx-4 flex snap-x gap-2 overflow-x-auto px-4 lg:mx-0 lg:grid lg:grid-cols-[repeat(var(--tiles),minmax(0,1fr))] lg:overflow-visible lg:px-0"
-        style={{ "--tiles": MARKETS.length } as CSSProperties}
+        style={{ "--tiles": markets.length } as CSSProperties}
         role="tablist"
         aria-label="종목"
       >
-        {MARKETS.map((m) => (
+        {markets.map((m) => (
           <TileButton
             key={m.market}
             name={m.name}

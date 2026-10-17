@@ -6,6 +6,7 @@ import { Logo } from "@/components/logo";
 import { MarketSwitcher } from "@/components/market-switcher";
 import { DEMO } from "@/lib/markets";
 import { allTiles } from "@/lib/overview";
+import { getMarkets } from "@/lib/universe";
 
 import "./globals.css";
 
@@ -24,7 +25,8 @@ export const metadata: Metadata = {
 // 레이아웃은 종목을 바꿔도 다시 그려지지 않음 — 전 종목 타일은 처음 열 때 한 번만 받고, 종목 전환 때는 그 종목 것만 받음
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   await connection();
-  const tiles = await allTiles();
+  const dashboard = (await getMarkets()).filter((m) => m.dashboard);
+  const tiles = await allTiles(dashboard);
   return (
     <html lang="ko" className={`${pretendard.variable} h-full antialiased`}>
       <body className="min-h-full font-sans">
@@ -38,7 +40,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               </span>
             )}
           </header>
-          <MarketSwitcher tiles={tiles}>{children}</MarketSwitcher>
+          <MarketSwitcher markets={dashboard} tiles={tiles}>
+            {children}
+          </MarketSwitcher>
         </main>
       </body>
     </html>
