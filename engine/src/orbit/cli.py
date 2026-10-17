@@ -515,6 +515,10 @@ def _sync_stocks(db: Path) -> None:
                 continue
             result = sync_stock_daily(api, store, instrument, now=datetime.now(UTC))
             period = f"{result.first:%Y-%m-%d} ~ {result.last:%Y-%m-%d}" if result.first else "없음"
+            if result.replaced:
+                log.info(
+                    "%s 수정주가가 바뀜 (액면분할 등) — 전 기간을 다시 받음", instrument.market
+                )
             log.info(
                 "%s %s 일봉 %d개 저장 (진행 중 %d개 제외), 누적 %d개 %s",
                 instrument.market,

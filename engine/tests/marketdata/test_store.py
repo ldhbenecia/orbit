@@ -78,3 +78,17 @@ def test_미국_일봉은_자릿수를_바꾸며_다시_받도록_지우고_다�
 
     markets = [r[0] for r in conn.execute("SELECT market FROM daily_candles").fetchall()]
     assert markets == ["KRW-BTC"]
+
+
+def test_통째로_바꾸다_실패하면_원래_일봉이_그대로() -> None:
+    store = CandleStore(sqlite3.connect(":memory:"))
+    start = datetime(2026, 3, 2, tzinfo=UTC)
+    old = Candle("US-EXA", start, *(Decimal("400"),) * 4, Decimal(1))
+    store.upsert([old], fetched_at=start)
+    # 소수 9자리 — 미국 가격 자릿수(8)를 넘어 저장이 거부됨
+    bad = Candle("US-EXA", start, *(Decimal("1.123456789"),) * 4, Decimal(1))
+
+    with pytest.raises(ValueError):
+        store.replace("US-EXA", [bad], fetched_at=start)
+
+    assert store.load("US-EXA") == [old]
