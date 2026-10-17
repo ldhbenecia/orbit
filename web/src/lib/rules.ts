@@ -1,4 +1,5 @@
 import type { MarketGroup } from "@/lib/markets";
+import type { StoryKey } from "@/lib/rule-stories";
 
 // 주식은 주말·휴장일이 빠져 N 개 봉이 N 거래일 (한 달 약 21거래일), 코인은 그냥 N 일
 const months = (n: number, group: MarketGroup) => Math.round(n / (group === "stock" ? 21 : 30));
@@ -38,4 +39,12 @@ export const ruleDescription = (spec: string) => {
   }
   if (name === "hold") return "처음 사서 끝까지 들고 있는 비교 기준";
   return "";
+};
+
+// 규칙 계열마다 배경 설명 — 단순 보유는 비교 기준이라 없음
+export const ruleStory = (spec: string): StoryKey | null => {
+  const [name] = spec.split("-");
+  if (name === "ma") return "ma";
+  if (name === "vb") return "vb";
+  return null;
 };
