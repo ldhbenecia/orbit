@@ -309,6 +309,8 @@ export interface components {
             fcf_yield: string | null;
             /** Revenue Growth */
             revenue_growth: string | null;
+            /** Loss */
+            loss: boolean;
             per_5y: components["schemas"]["PositionOut"] | null;
             pbr_5y: components["schemas"]["PositionOut"] | null;
         };

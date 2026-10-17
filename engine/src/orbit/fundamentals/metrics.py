@@ -16,6 +16,7 @@ class Valuation:
     roe: Decimal | None  # 최근 4분기 순이익 ÷ 자본총계
     fcf_yield: Decimal | None  # (영업현금흐름 − 설비투자) ÷ 시가총액
     revenue_growth: Decimal | None  # 최근 4분기 매출 ÷ 1년 전 최근 4분기 매출 − 1
+    loss: bool  # 최근 4분기 적자 — PER 이 빈 이유가 적자인지 주식 수·재무 부족인지 구분
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +58,16 @@ def valuation(snap: Snapshot, price: Decimal) -> Valuation:
         roe=_ratio(snap.net_income, snap.equity),
         fcf_yield=_ratio(fcf, cap),
         revenue_growth=growth - 1 if growth is not None else None,
+        loss=snap.net_income is not None and snap.net_income <= 0,
     )
+
+
+def _years_before(day: date, years: int) -> date:
+    # 윤일(2월 29일)의 몇 년 전은 2월 28일로
+    try:
+        return day.replace(year=day.year - years)
+    except ValueError:
+        return day.replace(year=day.year - years, day=28)
 
 
 def _known(snapshots: list[Snapshot], day: date) -> Snapshot | None:
@@ -95,7 +105,7 @@ def fundamentals(snapshots: list[Snapshot], candles: list[Candle]) -> Fundamenta
     if latest is None:
         return None
     now = valuation(latest, last.close)
-    since = today.replace(year=today.year - HISTORY_YEARS)
+    since = _years_before(today, HISTORY_YEARS)
     pers: list[Decimal] = []
     pbrs: list[Decimal] = []
     # 지금 달은 빼고 과거 월말끼리 — 지금 값이 비교 대상에 섞이지 않게

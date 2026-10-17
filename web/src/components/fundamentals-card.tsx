@@ -24,7 +24,11 @@ export function FundamentalsCard({ info, data }: { info: MarketInfo; data: Funda
       <div className="space-y-1">
         <p className="text-sm text-muted">재무 · {info.name}</p>
         <p className="text-xl font-bold tabular-nums">
-          {data.per === null ? "PER 없음 (최근 4분기 적자)" : `PER ${formatMultiple(data.per)}`}
+          {data.per !== null
+            ? `PER ${formatMultiple(data.per)}`
+            : data.loss
+              ? "PER 없음 (최근 4분기 적자)"
+              : "PER 없음 (주식 수·재무 부족)"}
         </p>
         {data.per_5y && <Range position={data.per_5y} />}
       </div>

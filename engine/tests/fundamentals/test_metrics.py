@@ -33,7 +33,7 @@ def test_지표는_시가총액과_재무값의_비율() -> None:
 def test_적자면_PER_없음_ROE_는_음수로() -> None:
     v = valuation(snap(net_income=-500), Decimal(50))
 
-    assert v.per is None
+    assert v.per is None and v.loss
     assert v.roe == Decimal("-0.05")
 
 
@@ -49,6 +49,7 @@ def test_주식수를_못_믿으면_시가총액_지표만_빠짐() -> None:
 
     assert (v.per, v.pbr, v.fcf_yield) == (None, None, None)
     assert (v.roe, v.revenue_growth) == (Decimal("0.25"), Decimal("0.2"))
+    assert not v.loss  # PER 이 비어도 적자는 아님 — 화면이 "적자" 라고 하지 않게
 
 
 def candle(day: date, close: int) -> Candle:
@@ -113,3 +114,12 @@ def test_보고서_전의_달은_비교에서_빠짐() -> None:
 
     assert result is not None and result.per_5y is not None
     assert result.per_5y.months == 49 - 12
+
+
+def test_마지막_봉이_윤일이어도_5년_전부터_비교() -> None:
+    # 2028-02-29 의 5년 전은 2023-02-28 — 2023년 2월부터 2028년 1월까지 60개월
+    candles = [*monthly([100] * 60, first=date(2023, 2, 28)), candle(date(2028, 2, 29), 100)]
+    result = fundamentals([snap(net_income=1_000)], candles)
+
+    assert result is not None and result.per_5y is not None
+    assert result.per_5y.months == 60

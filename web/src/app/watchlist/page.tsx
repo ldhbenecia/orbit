@@ -141,7 +141,7 @@ function WatchRow({ row, info }: { row: Row; info: MarketInfo | undefined }) {
 function Per({ row }: { row: Row }) {
   const f = row.fundamentals;
   if (!f) return <span className="text-muted">—</span>;
-  if (f.per === null) return <span className="text-xs text-muted">적자</span>;
+  if (f.per === null) return <span className="text-xs text-muted">{f.loss ? "적자" : "—"}</span>;
   return (
     <span title={`${formatDate(f.period_end)}까지 최근 4분기 · ${formatDate(f.filed)} 공시`}>
       {formatMultiple(f.per)}

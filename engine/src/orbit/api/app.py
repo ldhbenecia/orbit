@@ -62,6 +62,7 @@ class FundamentalsOut(BaseModel):
     roe: Decimal | None
     fcf_yield: Decimal | None
     revenue_growth: Decimal | None
+    loss: bool  # 최근 4분기 적자 — PER 이 빈 이유 구분
     per_5y: PositionOut | None  # 지난 5년 월말 PER 중 지금 위치 — 3년 미만이면 없음
     pbr_5y: PositionOut | None
 
@@ -82,6 +83,7 @@ def _fundamentals_out(f: Fundamentals) -> FundamentalsOut:
         roe=f.now.roe,
         fcf_yield=f.now.fcf_yield,
         revenue_growth=f.now.revenue_growth,
+        loss=f.now.loss,
         per_5y=_position_out(f.per_5y),
         pbr_5y=_position_out(f.pbr_5y),
     )
