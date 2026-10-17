@@ -7,8 +7,19 @@ import httpx
 
 from orbit.estimate.live import build_view
 from orbit.marketdata.candle import Candle
-from orbit.marketdata.instruments import SEOUL
+from orbit.marketdata.instruments import SEOUL, Instrument, NextOpenSpec
 from orbit.marketdata.tiger_holdings import Holding
+
+# 예시 국내 상장 해외 ETF — 같은 지수 미국 ETF 로 근사 / 운용사 구성 종목으로
+PROXY_ETF = Instrument(
+    "KRX-100000",
+    "100000",
+    SEOUL,
+    next_open=NextOpenSpec(proxy="SPY", nav=("tiger", "KR7000000000")),
+)
+HOLDINGS_ETF = Instrument(
+    "KRX-200000", "200000", SEOUL, next_open=NextOpenSpec(holdings_fund="KR7000000001")
+)
 
 
 def _kr_day(day: str, regular: tuple[str, str] | None) -> dict[str, Any]:
@@ -83,18 +94,18 @@ def test_주말에는_금요일_한국_종가에_금요일_밤_미국장과_환�
         SUNDAY_KR,
         SUNDAY_US,
         {
-            "367380": [
-                _candle("KRX-367380", date(2026, 10, 1), "7000"),
-                _candle("KRX-367380", date(2026, 10, 2), "7360"),
+            "100000": [
+                _candle("KRX-100000", date(2026, 10, 1), "7000"),
+                _candle("KRX-100000", date(2026, 10, 2), "7360"),
             ],
-            "QQQ": [
-                _candle("US-QQQ", date(2026, 10, 1), "100"),
-                _candle("US-QQQ", date(2026, 10, 2), "103"),
+            "SPY": [
+                _candle("US-SPY", date(2026, 10, 1), "100"),
+                _candle("US-SPY", date(2026, 10, 2), "103"),
             ],
         },
     )
 
-    view = build_view("KRX-367380", source, _no_holdings, NOW)
+    view = build_view(PROXY_ETF, source, _no_holdings, NOW)
 
     assert view.state == "ready" and view.result is not None
     assert view.next_open_day == date(2026, 10, 6)
@@ -117,8 +128,8 @@ def test_한국장_중에는_종가가_없어_추정하지_않음() -> None:
     }
 
     view = build_view(
-        "KRX-367380",
-        FakeSource(kr, SUNDAY_US, {"367380": []}),
+        PROXY_ETF,
+        FakeSource(kr, SUNDAY_US, {"100000": []}),
         _no_holdings,
         datetime(2026, 10, 6, 10, tzinfo=SEOUL),
     )
@@ -136,7 +147,7 @@ def test_구성_종목_중_시세가_없는_종목은_빼고_반영_비중으로
         SUNDAY_KR,
         SUNDAY_US,
         {
-            "0183J0": [_candle("KRX-0183J0", date(2026, 10, 2), "10000")],
+            "200000": [_candle("KRX-200000", date(2026, 10, 2), "10000")],
             "AAA": [
                 _candle("US-AAA", date(2026, 10, 1), "100"),
                 _candle("US-AAA", date(2026, 10, 2), "110"),
@@ -144,7 +155,7 @@ def test_구성_종목_중_시세가_없는_종목은_빼고_반영_비중으로
         },
     )
 
-    view = build_view("KRX-0183J0", source, lambda fund: holdings, NOW)
+    view = build_view(HOLDINGS_ETF, source, lambda fund: holdings, NOW)
 
     assert view.result is not None
     assert view.coverage == Decimal("0.8")
@@ -161,7 +172,7 @@ def test_옛_심볼은_확인된_새_심볼로_시세를_받음() -> None:
         SUNDAY_KR,
         SUNDAY_US,
         {
-            "0183J0": [_candle("KRX-0183J0", date(2026, 10, 2), "10000")],
+            "200000": [_candle("KRX-200000", date(2026, 10, 2), "10000")],
             "ECHO": [
                 _candle("US-ECHO", date(2026, 10, 1), "100"),
                 _candle("US-ECHO", date(2026, 10, 2), "105"),
@@ -169,7 +180,7 @@ def test_옛_심볼은_확인된_새_심볼로_시세를_받음() -> None:
         },
     )
 
-    view = build_view("KRX-0183J0", source, lambda fund: holdings, NOW)
+    view = build_view(HOLDINGS_ETF, source, lambda fund: holdings, NOW)
 
     assert [leg.symbol for leg in view.legs] == ["ECHO"] and view.coverage == 1
 
@@ -179,19 +190,19 @@ def test_한국_종가와_같은_날_기준가가_있으면_기준가에서도_�
         SUNDAY_KR,
         SUNDAY_US,
         {
-            "367380": [_candle("KRX-367380", date(2026, 10, 2), "7360")],
-            "QQQ": [
-                _candle("US-QQQ", date(2026, 10, 1), "100"),
-                _candle("US-QQQ", date(2026, 10, 2), "103"),
+            "100000": [_candle("KRX-100000", date(2026, 10, 2), "7360")],
+            "SPY": [
+                _candle("US-SPY", date(2026, 10, 1), "100"),
+                _candle("US-SPY", date(2026, 10, 2), "103"),
             ],
         },
     )
 
     same_day = build_view(
-        "KRX-367380", source, _no_holdings, NOW, lambda k, f: (date(2026, 10, 2), Decimal(7300))
+        PROXY_ETF, source, _no_holdings, NOW, lambda k, f: (date(2026, 10, 2), Decimal(7300))
     )
     stale = build_view(
-        "KRX-367380", source, _no_holdings, NOW, lambda k, f: (date(2026, 10, 1), Decimal(7400))
+        PROXY_ETF, source, _no_holdings, NOW, lambda k, f: (date(2026, 10, 1), Decimal(7400))
     )
 
     assert same_day.nav_estimate == Decimal("7594.19")  # 7300 × 1.03 × 1.01

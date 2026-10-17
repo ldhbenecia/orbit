@@ -15,6 +15,8 @@ from orbit.backtest.engine import DEFAULT_CONFIG, Funding, run_backtest
 from orbit.backtest.metrics import compute_metrics
 from orbit.backtest.runs import RunSpec, save_run
 from orbit.marketdata.candle import Candle
+from orbit.marketdata.instruments import NEW_YORK, SEOUL, Instrument, NextOpenSpec, Universe
+from orbit.marketdata.names import InstrumentName, save_names
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.upbit_ticker import Ticker
 from orbit.strategies.registry import build_strategy
@@ -178,7 +180,7 @@ def test_적립식_분석(tmp_path: Path) -> None:
     ]
     store.upsert(
         [
-            Candle("KRX-367380", d, *(Decimal(10_000 + i * 10),) * 4, Decimal(1))
+            Candle("KRX-100000", d, *(Decimal(10_000 + i * 10),) * 4, Decimal(1))
             for i, d in enumerate(days)
         ],
         fetched_at=D,
@@ -190,7 +192,7 @@ def test_적립식_분석(tmp_path: Path) -> None:
         today=lambda: date(2026, 6, 10),
     )
 
-    body = TestClient(app).get("/dca", params={"market": "KRX-367380"}).json()
+    body = TestClient(app).get("/dca", params={"market": "KRX-100000"}).json()
 
     assert body["next_payday"] == "2026-06-24"  # 6-25 휴장이라 직전 영업일
     assert body["days_until"] == 14
@@ -226,12 +228,12 @@ def test_일봉이_추가되거나_고쳐지면_캐시를_쓰지_않고_새로_�
     store.close()
 
 
-def test_다음_개장_추정은_국내_ETF_만_계산하고_실패하면_비움(tmp_path: Path) -> None:
+def test_다음_개장_추정은_설정한_종목만_계산하고_실패하면_비움(tmp_path: Path) -> None:
     from orbit.estimate.live import NextOpenView
     from orbit.estimate.next_open import NextOpen
 
     def view(market: str) -> NextOpenView:
-        if market == "KRX-360750":
+        if market == "KRX-200000":
             raise httpx.ConnectError("허용 IP 아님")
         result = NextOpen(
             Decimal(7360), Decimal("7656.6"), Decimal("0.03"), Decimal("0.01"), Decimal("0.0403")
@@ -244,12 +246,71 @@ def test_다음_개장_추정은_국내_ETF_만_계산하고_실패하면_비움
         )
 
     db = tmp_path / "orbit.sqlite"
-    client = TestClient(create_app(lambda: sqlite3.connect(db), next_open=view))
+    spec = NextOpenSpec(proxy="SPY")
+    universe = Universe(
+        (
+            Instrument("KRX-100000", "100000", SEOUL, dashboard=True, next_open=spec),
+            Instrument("KRX-200000", "200000", SEOUL, dashboard=True, next_open=spec),
+            Instrument("KRX-300000", "300000", SEOUL, dashboard=True),  # 추정 설정 없음
+        )
+    )
+    client = TestClient(create_app(lambda: sqlite3.connect(db), next_open=view, universe=universe))
 
-    body = client.get("/next-open", params={"market": "KRX-367380"}).json()
+    body = client.get("/next-open", params={"market": "KRX-100000"}).json()
     assert (body["estimate"], body["next_open_day"]) == ("7656.6", "2026-10-06")
-    assert client.get("/next-open", params={"market": "US-QQQ"}).json() is None
-    assert client.get("/next-open", params={"market": "KRX-360750"}).json() is None
+    assert client.get("/next-open", params={"market": "KRX-300000"}).json() is None
+    assert client.get("/next-open", params={"market": "KRX-200000"}).json() is None
+
+
+def test_종목_목록은_코인_다음_설정_순서_이름을_못_받았으면_종목코드(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    conn = sqlite3.connect(db)
+    save_names(conn, [InstrumentName("US-SPY", "SPY", "SPDR S&P 500", "NYSE", "USD")], D)
+    conn.close()
+    universe = Universe(
+        (
+            Instrument("US-SPY", "SPY", NEW_YORK, dashboard=True, sector="지수"),
+            Instrument("KRX-100000", "100000", SEOUL, dashboard=True, dca=True),
+            Instrument("US-QQQ", "QQQ", NEW_YORK, sector="지수"),
+        )
+    )
+
+    body = (
+        TestClient(create_app(lambda: sqlite3.connect(db), universe=universe))
+        .get("/markets")
+        .json()
+    )
+
+    assert [m["market"] for m in body] == ["KRW-BTC", "KRW-ETH", "US-SPY", "KRX-100000", "US-QQQ"]
+    by = {m["market"]: m for m in body}
+    assert by["US-SPY"]["name"] == "SPDR S&P 500" and by["US-SPY"]["currency"] == "USD"
+    assert by["KRX-100000"]["name"] == "100000" and by["KRX-100000"]["dca"] is True
+    assert by["US-QQQ"]["dashboard"] is False and by["US-QQQ"]["sector"] == "지수"
+
+
+def test_가상_데이터_모드는_실제_이름을_하나도_내보내지_않음(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    conn = sqlite3.connect(db)
+    save_names(conn, [InstrumentName("US-SPY", "SPY", "SPDR S&P 500", "NYSE", "USD")], D)
+    conn.close()
+    universe = Universe(
+        (
+            Instrument("US-SPY", "SPY", NEW_YORK, dashboard=True),
+            Instrument("US-QQQ", "QQQ", NEW_YORK, sector="지수"),
+        )
+    )
+
+    body = (
+        TestClient(create_app(lambda: sqlite3.connect(db), universe=universe, demo=True))
+        .get("/markets")
+        .json()
+    )
+
+    names = [m["name"] for m in body]
+    assert names == ["예시 코인 A", "예시 코인 B", "예시 종목 1", "예시 관심 종목 1"]
+    assert not any(
+        real in " ".join(names) for real in ("비트코인", "이더리움", "SPDR", "SPY", "QQQ")
+    )
 
 
 def test_규칙_검증은_기록이_없으면_비움(tmp_path: Path) -> None:

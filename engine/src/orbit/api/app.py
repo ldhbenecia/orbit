@@ -14,15 +14,27 @@ from pydantic import BaseModel
 from orbit.backtest.runs import latest_runs, load_trades
 from orbit.backtest.validate import latest_checks
 from orbit.dca.plan import next_payday, run_dca
-from orbit.estimate.live import NEXT_OPEN_BASKETS, NextOpenView
+from orbit.estimate.live import NextOpenView
 from orbit.indicators.moving_average import sma
 from orbit.ledger.book import Ledger
 from orbit.marketdata.aggregate import Interval, aggregate
 from orbit.marketdata.candle import Candle
-from orbit.marketdata.instruments import SEOUL
+from orbit.marketdata.instruments import COINS, SEOUL, Universe
+from orbit.marketdata.names import load_names
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.upbit_ticker import Ticker
 from orbit.signals.today import Stance, is_upbit_market, today_signals
+
+
+class MarketOut(BaseModel):
+    market: str  # 저장·API 키 (KRW-·US-·KRX-)
+    name: str  # 토스 표시 이름 — 아직 못 받았으면 종목코드
+    group: Literal["coin", "stock"]
+    currency: Literal["KRW", "USD"]
+    dashboard: bool  # 맨 위 타일
+    dca: bool = False  # 매달 적립 — 적립식 분석
+    next_open: bool = False  # 다음 개장 추정 대상
+    sector: str | None = None  # 관심 종목 분야
 
 
 class CandleOut(BaseModel):
@@ -195,14 +207,19 @@ def _no_ticker(market: str) -> Ticker | None:
     return None
 
 
+NO_STOCKS = Universe()  # 종목 설정이 없으면 코인만
+
+
 def create_app(
     connect: Callable[[], sqlite3.Connection],
     get_ticker: Callable[[str], Ticker | None] = _no_ticker,
     kr_trading_day_for: Callable[[date], date] | None = None,
     today: Callable[[], date] = lambda: datetime.now(SEOUL).date(),
     next_open: Callable[[str], NextOpenView] | None = None,
-    warm_markets: Sequence[str] = (),
+    universe: Universe = NO_STOCKS,
+    demo: bool = False,  # README 캡처용 — 종목 이름을 예시 이름으로
 ) -> FastAPI:
+    warm_markets: Sequence[str] = [market for market, _ in COINS] + universe.markets
     # 전 기간 일봉을 Decimal 로 바꾸는 게 요청 비용 대부분 — DB 가 그대로면 읽어 둔 걸 씀
     cache: dict[str, tuple[tuple[int, int | None], list[Candle]]] = {}
 
@@ -230,6 +247,50 @@ def create_app(
         yield
 
     app = FastAPI(title="orbit", docs_url=None, redoc_url=None, lifespan=lifespan)
+
+    @app.get("/markets")
+    def markets() -> list[MarketOut]:
+        # 종목 목록은 로컬 설정에서 — 웹은 이 목록으로 타일·관심 종목을 그림
+        conn = connect()
+        try:
+            names = load_names(conn)
+        finally:
+            conn.close()
+        out = [
+            MarketOut(
+                market=market,
+                name=f"예시 코인 {chr(65 + i)}" if demo else name,
+                group="coin",
+                currency="KRW",
+                dashboard=True,
+            )
+            for i, (market, name) in enumerate(COINS)
+        ]
+        dashboard_index = watch_index = 0
+        for instrument in universe.instruments:
+            if demo:
+                if instrument.dashboard:
+                    dashboard_index += 1
+                    name = f"예시 종목 {dashboard_index}"
+                else:
+                    watch_index += 1
+                    name = f"예시 관심 종목 {watch_index}"
+            else:
+                cached = names.get(instrument.market)
+                name = cached.name if cached else instrument.symbol
+            out.append(
+                MarketOut(
+                    market=instrument.market,
+                    name=name,
+                    group="stock",
+                    currency="USD" if instrument.market.startswith("US-") else "KRW",
+                    dashboard=instrument.dashboard,
+                    dca=instrument.dca,
+                    next_open=instrument.next_open is not None,
+                    sector=instrument.sector,
+                )
+            )
+        return out
 
     @app.get("/candles")
     def candles(
@@ -328,7 +389,8 @@ def create_app(
     @app.get("/next-open")
     def next_open_estimate(market: str) -> NextOpenOut | None:
         # 국내 상장 미국 ETF — 한국 종가 뒤 미국장·환율 변동으로 다음 개장가를 추정
-        if next_open is None or market not in NEXT_OPEN_BASKETS:
+        instrument = universe.find(market)
+        if next_open is None or instrument is None or instrument.next_open is None:
             return None
         try:
             view = next_open(market)

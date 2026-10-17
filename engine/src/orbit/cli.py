@@ -23,12 +23,20 @@ from orbit.backtest.metrics import Metrics, compute_metrics
 from orbit.backtest.runs import RunSpec, save_run
 from orbit.backtest.validate import check_rules, save_checks, specs_for
 from orbit.brokers.dry_run import DryRunBroker
-from orbit.estimate.live import NEXT_OPEN_BASKETS, NextOpenView, build_view
+from orbit.estimate.live import NextOpenView, build_view
 from orbit.ledger.book import Ledger
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.demo import demo_candles
 from orbit.marketdata.fund_nav import Nav, fetch_ace_nav, fetch_tiger_nav
-from orbit.marketdata.instruments import SEOUL, STOCK_INSTRUMENTS
+from orbit.marketdata.instruments import (
+    COINS,
+    DEFAULT_MARKETS_PATH,
+    EXAMPLE_MARKETS_PATH,
+    SEOUL,
+    Universe,
+    load_universe,
+)
+from orbit.marketdata.names import from_toss, save_names
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.sync import sync_daily_candles, sync_stock_daily
 from orbit.marketdata.tiger_holdings import TIGER_BASE_URL, Holding, fetch_holdings
@@ -124,15 +132,17 @@ def main() -> None:
         _sync_stocks(args.db)
     elif args.command == "serve":
         db = args.db
-        # 외부 접속을 막기 위해 루프백에만 바인딩
+        # 가상 데이터 화면은 예시 종목 목록으로 — 내 목록이 캡처에 섞이지 않게
+        universe = load_universe(EXAMPLE_MARKETS_PATH if args.demo else DEFAULT_MARKETS_PATH)
         toss = None if args.demo else _toss_api()
+        # 외부 접속을 막기 위해 루프백에만 바인딩
         app = create_app(
             lambda: sqlite3.connect(db),
             get_ticker=(lambda market: None) if args.demo else try_fetch_ticker,
             kr_trading_day_for=_kr_calendar(toss) if toss else None,
-            next_open=_next_open(toss) if toss else None,
-            # 첫 화면부터 빠르게 — 전 종목 일봉을 서버가 뜰 때 읽어 둠
-            warm_markets=("KRW-BTC", "KRW-ETH", *(i.market for i in STOCK_INSTRUMENTS)),
+            next_open=_next_open(toss, universe) if toss else None,
+            universe=universe,
+            demo=args.demo,
         )
         uvicorn.run(app, host="127.0.0.1", port=args.port)
     elif args.command == "backtest":
@@ -144,7 +154,7 @@ def main() -> None:
     elif args.command == "demo-data":
         _demo_data(args.db)
     elif args.command == "validate":
-        _validate(args.market or list(VALIDATED_MARKETS), args.db)
+        _validate(args.market or validated_markets(load_universe()), args.db)
     elif args.command == "compare-strategies":
         _compare_strategies(args)
     elif args.command == "signal":
@@ -312,7 +322,9 @@ def _wallet(db: Path) -> None:
 def _demo_data(db: Path) -> None:
     # 거래소 약관상 실제 시세는 공개 배포 금지 — README 화면은 이 가상 데이터로 찍음
     end = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
-    markets = ["KRW-BTC", "KRW-ETH", *(i.market for i in STOCK_INSTRUMENTS)]
+    # 예시 종목 목록으로 — 가상 데이터 화면에 내 목록이 섞이지 않게
+    universe = load_universe(EXAMPLE_MARKETS_PATH)
+    markets = [market for market, _ in COINS] + universe.markets
     store = CandleStore.open(db)
     for market in markets:
         start = (
@@ -322,12 +334,14 @@ def _demo_data(db: Path) -> None:
         )
         store.upsert(demo_candles(market, start, end), fetched_at=datetime.now(UTC))
     store.close()
-    _validate(list(VALIDATED_MARKETS), db)
+    _validate(validated_markets(universe), db)
     log.info("가상 시세 DB: %s — uv run orbit serve --demo --db %s", db, db)
 
 
-# 국내 ETF 는 호가 단위를 공식 확인하기 전이라 제외
-VALIDATED_MARKETS = ("KRW-BTC", "KRW-ETH", "US-QQQ", "US-SPY")
+def validated_markets(universe: Universe) -> list[str]:
+    # 코인 + 대시보드의 미국 종목. 국내 ETF 는 호가 단위를 공식 확인하기 전이라 제외
+    us = [i.market for i in universe.instruments if i.dashboard and i.market.startswith("US-")]
+    return [market for market, _ in COINS] + us
 
 
 def _validate(markets: list[str], db: Path) -> None:
@@ -454,16 +468,39 @@ def _sync_stocks(db: Path) -> None:
     if settings.toss_client_id is None or settings.toss_client_secret is None:
         log.error(".env 에 TOSS_CLIENT_ID · TOSS_CLIENT_SECRET 이 없음")
         return
+    universe = load_universe()
+    if not universe.instruments:
+        return
     store = CandleStore.open(db)
     with httpx.Client(base_url=TOSS_BASE_URL, timeout=10) as client:
         api = TossMarketData(client, settings.toss_client_id, settings.toss_client_secret)
-        for instrument in STOCK_INSTRUMENTS:
+        # 이름·거래소는 토스 종목 정보에서 — 종목 목록에는 코드만 적으면 되게
+        by_symbol = {i.symbol: i for i in universe.instruments}
+        symbols = list(by_symbol)
+        names = []
+        for start in range(0, len(symbols), TOSS_BATCH):
+            batch = ",".join(symbols[start : start + TOSS_BATCH])
+            for row in api.get("/api/v1/stocks", {"symbols": batch})["result"]:
+                if row["symbol"] in by_symbol:
+                    names.append(from_toss(by_symbol[row["symbol"]], row))
+        conn = sqlite3.connect(db)
+        try:
+            save_names(conn, names, datetime.now(UTC))
+        finally:
+            conn.close()
+        missing = set(symbols) - {n.symbol for n in names}
+        if missing:
+            log.warning("토스에 없는 종목코드: %s", ", ".join(sorted(missing)))
+        names_by_market = {n.market: n.name for n in names}
+        for instrument in universe.instruments:
+            if instrument.symbol in missing:
+                continue
             result = sync_stock_daily(api, store, instrument, now=datetime.now(UTC))
             period = f"{result.first:%Y-%m-%d} ~ {result.last:%Y-%m-%d}" if result.first else "없음"
             log.info(
                 "%s %s 일봉 %d개 저장 (진행 중 %d개 제외), 누적 %d개 %s",
                 instrument.market,
-                instrument.name,
+                names_by_market.get(instrument.market, instrument.symbol),
                 result.saved,
                 result.skipped_open,
                 result.total,
@@ -497,6 +534,7 @@ def _kr_calendar(api: TossMarketData) -> Callable[[date], date]:
 
 
 # 토스 호출이 종목당 10번 넘게 일어남 — 시세 갱신 주기(1분)만큼만 재사용
+TOSS_BATCH = 200  # 토스 종목 정보 한 번에 최대 200개
 NEXT_OPEN_TTL = timedelta(minutes=1)
 NAV_TTL = timedelta(minutes=10)
 NEXT_OPEN_STALE = timedelta(minutes=5)  # 이보다 오래된 미리 계산 값은 쓰지 않음
@@ -523,7 +561,8 @@ class _SharedGets:
         return self._api.daily_candles(symbol, market, exchange_tz, since)
 
 
-def _next_open(api: TossMarketData) -> Callable[[str], NextOpenView]:
+def _next_open(api: TossMarketData, universe: Universe) -> Callable[[str], NextOpenView]:
+    targets = {i.market: i for i in universe.instruments if i.next_open is not None}
     source = _SharedGets(api)
     tiger = httpx.Client(base_url=TIGER_BASE_URL, timeout=10)
     fund_sites = httpx.Client(timeout=10)  # 운용사 기준가 (TIGER·ACE)
@@ -562,14 +601,14 @@ def _next_open(api: TossMarketData) -> Callable[[str], NextOpenView]:
             now = datetime.now(UTC)
             cached = views.get(market)
             if cached is None or now - cached[0] >= NEXT_OPEN_TTL:
-                cached = (now, build_view(market, source, holdings_for, now, nav_for))
+                cached = (now, build_view(targets[market], source, holdings_for, now, nav_for))
                 views[market] = cached
             return cached[1]
 
     def keep_fresh() -> None:
         # 요청이 토스 호출(1~2초)을 기다리지 않게 미리 계산해 둠
         while True:
-            for market in NEXT_OPEN_BASKETS:
+            for market in targets:
                 try:
                     refresh(market)
                 except httpx.HTTPError as error:
