@@ -1,8 +1,13 @@
 # SEC EDGAR — 미국 기업 재무
 
-> 확인일: 2026-10-17 · 출처: [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces), [Developer resources](https://www.sec.gov/about/developer-resources)
+> 확인일: 2026-10-17 · 출처: [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces), [Developer resources](https://www.sec.gov/about/developer-resources), [Privacy and Security Policy](https://www.sec.gov/privacy)
 
 미국 상장사가 SEC 에 낸 연간(10-K)·분기(10-Q) 보고서의 숫자를 XBRL 로 모아 둔 공개 API. orbit 은 관심 종목의 PER·PBR·ROE·FCF 수익률·매출 성장과 "지난 5년 중 지금 위치" 를 여기서 계산한다.
+
+## 재배포
+
+- SEC.gov 의 정보는 공개 정보라 SEC 허락 없이 복사·재배포할 수 있다 (Privacy and Security Policy). 출처 표기는 권장
+- **단, orbit 의 PER·PBR·FCF 수익률·5년 위치는 토스 가격을 곱한 값**이라 토스 데이터 이용 정책을 따른다 — 공개 문서·캡처에 싣지 않음. ROE·매출 성장처럼 공시 값만으로 계산한 숫자는 제약 없음
 
 ## 사용 방식
 
