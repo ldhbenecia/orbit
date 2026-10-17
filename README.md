@@ -30,7 +30,7 @@
 | 자산 | 종목 | 시세 |
 |---|---|---|
 | 코인 | 비트코인, 이더리움 | 업비트 공개 API (원화) |
-| 미국주식 | QQQ, SPY, ACE 미국나스닥100, TIGER 미국S&P500, TIGER 미국우주테크 | 토스증권 Open API (조회만) |
+| 주식 | 미국 주식·ETF, 국내 상장 ETF — 목록은 로컬 설정 `config/markets.local.yaml` (예시: `config/markets.example.yaml`) | 토스증권 Open API (조회만) |
 
 ## 원칙
 
