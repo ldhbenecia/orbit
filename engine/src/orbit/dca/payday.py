@@ -76,6 +76,22 @@ class PaydayResult:
 Fee = Callable[[Decimal], Decimal]
 
 
+def _buy(cash: Decimal, budget: Decimal, close: Decimal, fee: Fee) -> tuple[int, Decimal]:
+    # 수수료까지 예산 안에서 — 1주 단위로 내림, 넘치면 한 주씩 줄임. (주 수, 수수료)
+    n = int((budget / close).to_integral_value(ROUND_DOWN))
+    while n > 0 and close * n + fee(close * n) > budget:
+        n -= 1
+    return n, fee(close * n) if n else Decimal(0)
+
+
+def _budget(spend: Spend, cash: Decimal, monthly: Decimal) -> Decimal:
+    if spend is Spend.ALL:
+        return cash
+    if spend is Spend.HALF_SALARY:
+        return min(cash, monthly / 2)
+    return Decimal(0)
+
+
 def run_payday(
     candles: Sequence[Candle],
     paydays: Sequence[int],
@@ -83,47 +99,54 @@ def run_payday(
     monthly: Decimal,
     fee: Fee,
 ) -> PaydayResult:
-    # paydays 첫 날부터 candles 끝까지 — 판단(choices)은 미리 계산해 여러 구간에서 같이 씀
+    # paydays 첫 날부터 candles 끝까지 매일 평가 — 가장 나빴던 순간까지
     cash = invested = fees = Decimal(0)
     qty = buys = 0
     worst = Decimal(0)
     pay = set(paydays)
-    first = paydays[0] if paydays else len(candles)
-    for i in range(first, len(candles)):
+    for i in range(paydays[0], len(candles)):
         close = candles[i].close
         if i in pay:
             cash += monthly
             invested += monthly
-            spend = choices[i]
-            if spend is Spend.ALL:
-                budget = cash
-            elif spend is Spend.HALF_SALARY:
-                budget = min(cash, monthly / 2)
-            else:
-                budget = Decimal(0)
-            # 수수료까지 예산 안에서 — 1주 단위로 내림, 넘치면 한 주씩 줄임
-            n = int((budget / close).to_integral_value(ROUND_DOWN))
-            while n > 0 and close * n + fee(close * n) > budget:
-                n -= 1
+            n, paid = _buy(cash, _budget(choices[i], cash, monthly), close, fee)
             if n > 0:
-                cost = close * n
-                paid = fee(cost)
-                cash -= cost + paid
+                cash -= close * n + paid
                 fees += paid
                 qty += n
                 buys += 1
-        if invested:
-            worst = min(worst, (cash + close * qty) / invested - 1)
-    end = candles[-1].close if candles else Decimal(0)
-    return PaydayResult(invested, cash + end * qty, cash, qty, buys, fees, worst)
+        worst = min(worst, (cash + close * qty) / invested - 1)
+    return PaydayResult(invested, cash + candles[-1].close * qty, cash, qty, buys, fees, worst)
+
+
+def final_value(
+    candles: Sequence[Candle],
+    paydays: Sequence[int],
+    choices: dict[int, Spend],
+    monthly: Decimal,
+    fee: Fee,
+    end: int,
+) -> Decimal:
+    # run_payday 와 같은 매수를 월급날만 돌고 end 전날 종가로 평가 — 구간 비교용 (수백 번 돎)
+    cash = Decimal(0)
+    qty = 0
+    for i in paydays:
+        close = candles[i].close
+        cash += monthly
+        n, paid = _buy(cash, _budget(choices[i], cash, monthly), close, fee)
+        cash -= close * n + paid
+        qty += n
+    return cash + candles[end - 1].close * qty
 
 
 @dataclass(frozen=True, slots=True)
 class Comparison:
     start: datetime  # 비교한 첫 월급날
     full: dict[RuleName, PaydayResult]  # 비교 가능한 전 기간
-    windows: int  # 5년씩 잘라 본 구간 수 (매달 시작)
-    beat_plain: dict[RuleName, Decimal]  # 구간 중 단순 적립보다 평가액이 컸던 비율 (plain 제외)
+    windows: int  # 5년씩 잘라 본 구간 수 (매달 시작, 마지막 구간은 마지막 봉까지)
+    beat_plain: dict[
+        RuleName, Decimal
+    ]  # 구간 중 단순 적립보다 평가액이 컸던 비율 — 구간이 없으면 빔
     latest: dict[RuleName, Choice]  # 다음 월급날에 각 규칙이 할 일 — 마지막 확정 봉 기준
 
 
@@ -137,18 +160,20 @@ def compare(candles: Sequence[Candle], monthly: Decimal, fee: Fee) -> Comparison
     paydays = [i for i in payday_indices(candles) if i >= YEAR_BARS]
     if not paydays:
         return None
-    choices = {name: {i: rule(candles[:i]).spend for i in paydays} for name, rule in RULES.items()}
+    choices = decide(candles, paydays)
     full = {name: run_payday(candles, paydays, c, monthly, fee) for name, c in choices.items()}
     wins: dict[RuleName, int] = {name: 0 for name in RULES if name != "plain"}
-    windows = 0
-    for start in range(len(paydays) - WINDOW_MONTHS):
+    windows = max(0, len(paydays) - WINDOW_MONTHS + 1)
+    for start in range(windows):
         span = paydays[start : start + WINDOW_MONTHS]
-        # 구간 끝 = 다음 구간 첫 월급날 전날 — 5년 동안 넣고 그 시점에 평가
-        window = candles[: paydays[start + WINDOW_MONTHS]]
-        results = {name: run_payday(window, span, c, monthly, fee) for name, c in choices.items()}
-        windows += 1
+        # 5년 동안 넣고 다음 구간 첫 월급날 전날(마지막 구간은 마지막 봉)에 평가
+        nxt = start + WINDOW_MONTHS
+        end = paydays[nxt] if nxt < len(paydays) else len(candles)
+        values = {
+            name: final_value(candles, span, c, monthly, fee, end) for name, c in choices.items()
+        }
         for name in wins:
-            if results[name].final_value > results["plain"].final_value:
+            if values[name] > values["plain"]:
                 wins[name] += 1
     return Comparison(
         start=candles[paydays[0]].start,

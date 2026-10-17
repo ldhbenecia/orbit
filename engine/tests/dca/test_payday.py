@@ -10,6 +10,7 @@ from orbit.dca.payday import (
     buy_the_dip,
     compare,
     decide,
+    final_value,
     run_payday,
     wait_for_trend,
 )
@@ -140,6 +141,20 @@ def test_계속_오르면_구간마다_단순_적립이_가장_많음() -> None:
 
     assert result is not None
     paydays = [i for i in payday_indices(candles) if i >= YEAR_BARS]
-    assert result.windows == len(paydays) - WINDOW_MONTHS > 0
+    # 마지막 구간(최근 5년)은 마지막 봉까지 — 시작 월급날 수 − 60 + 1
+    assert result.windows == len(paydays) - WINDOW_MONTHS + 1 > 1
     assert result.beat_plain == {"dip": 0, "trend": 0}
     assert result.full["trend"].final_value == result.full["plain"].final_value
+
+
+def test_구간_평가액은_매일_도는_계산의_평가액과_같음() -> None:
+    # 구간 비교는 월급날만 도는 빠른 계산 — 매일 도는 run_payday 와 결과가 같아야 함
+    prices = [Decimal(100 + (i * 7) % 61) for i in range(YEAR_BARS + 400)]
+    candles = weekdays(prices)
+    paydays = [i for i in payday_indices(candles) if i >= YEAR_BARS]
+    fee = lambda a: (a * Decimal("0.001")).quantize(Decimal("0.01"), ROUND_DOWN)  # noqa: E731
+    span, end = paydays[2:12], paydays[12]
+
+    for choices in decide(candles, paydays).values():
+        slow = run_payday(candles[:end], span, choices, Decimal(1000), fee)
+        assert final_value(candles, span, choices, Decimal(1000), fee, end) == slow.final_value

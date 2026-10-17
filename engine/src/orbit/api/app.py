@@ -188,7 +188,8 @@ class PaydayRuleOut(BaseModel):
     worst_vs_invested: Decimal
     buys: int  # 실제로 산 달 수
     cash: Decimal  # 아직 안 쓴 돈
-    beat_plain: Decimal | None  # 5년 구간 중 단순 적립보다 평가액이 컸던 비율 (단순 적립은 없음)
+    # 5년 구간 중 단순 적립보다 평가액이 컸던 비율 — 단순 적립 자신, 5년 미만이면 없음
+    beat_plain: Decimal | None
     next_spend: Spend  # 마지막 확정 봉 기준 다음 월급날에 할 일
     next_reason: str
 

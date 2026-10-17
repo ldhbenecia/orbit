@@ -529,7 +529,11 @@ def _payday(market: str, monthly: Decimal, db: Path) -> None:
             f"${r.final_value:,.0f}",
             _pct(r.final_value / r.invested - 1),
             _pct(r.worst_vs_invested),
-            "기준" if beat is None else f"단순 적립보다 나음 {beat * 100:.0f}%",
+            "기준"
+            if name == "plain"
+            else "구간 부족"
+            if beat is None
+            else f"단순 적립보다 나음 {beat * 100:.0f}%",
         )
     log.info("\n5년 구간 %d개 (매달 시작) 중 평가액이 단순 적립보다 컸던 비율", result.windows)
     log.info("다음 월급날 (%s 종가 기준)", f"{candles[-1].start:%Y-%m-%d}")
