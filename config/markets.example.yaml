@@ -1,0 +1,16 @@
+# 종목 목록 예시 — 복사해서 config/markets.local.yaml 로 (그 파일은 커밋되지 않음)
+# 내가 무엇을 사고 보는지가 공개 레포에 드러나지 않게 실제 목록은 로컬 파일에만 둔다
+# 종목 코드: 미국은 티커(SPY, BRK.B), 국내는 6자리 코드를 따옴표로("069500" — 따옴표가 없으면 숫자로 읽혀 앞의 0 이 사라짐)
+# 이름·거래소는 토스 종목 정보에서 자동으로 받음 (uv run orbit sync-stocks)
+
+dashboard:                # 맨 위 타일에 보이는 종목 — 코인(BTC·ETH)은 항상
+  - symbol: SPY
+  - symbol: "069500"
+    dca: true             # 매달 적립하는 종목 — 보유/현금 신호 대신 적립식 분석
+    # next_open:          # 국내 상장 해외 ETF 만 — 국내 장 마감 뒤 미국장·환율로 다음 개장가 추정
+    #   proxy: SPY        # 같은 지수를 따르는 미국 ETF 로 근사
+    #   holdings: KR7…    # 또는 TIGER 운용사 펀드 코드로 구성 종목 비중 계산 (proxy 대신)
+    #   nav: {source: tiger, fund: KR7…}   # 운용사 기준가 (tiger | ace, 펀드 코드)
+
+watchlist:                # 관심 종목 화면 — 분야: [종목 코드]
+  지수: [SPY, QQQ]

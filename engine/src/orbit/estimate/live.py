@@ -11,7 +11,7 @@ import httpx
 from orbit.estimate.next_open import Leg, NextOpen, estimate_next_open, us_closes_around
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.fund_nav import Nav
-from orbit.marketdata.instruments import NEW_YORK, SEOUL, find_instrument
+from orbit.marketdata.instruments import NEW_YORK, SEOUL, Instrument
 from orbit.marketdata.tiger_holdings import Holding
 
 log = logging.getLogger(__name__)
@@ -20,24 +20,8 @@ KR_REGULAR_CLOSE = time(15, 30)  # 장 캘린더에 그날 정보가 없을 때�
 LOOKBACK = timedelta(days=14)  # 연휴가 길어도 직전 종가가 들어올 만큼
 
 
-@dataclass(frozen=True, slots=True)
-class Basket:
-    # 같은 지수를 따르는 미국 ETF 하나로 근사하거나, 운용사가 공개한 구성 종목으로 계산
-    proxy: str | None = None
-    holdings_fund: str | None = None  # TIGER 운용사 펀드 코드 (ksdFund) — 구성 종목 출처
-    nav_source: tuple[Literal["tiger", "ace"], str] | None = None  # 기준가 공시 운용사·펀드 코드
-
-
+# 대상 ETF 와 근사 방법(같은 지수 미국 ETF·운용사 구성 종목·기준가 펀드 코드)은 로컬 종목 설정에서
 # 이름에 (H) 가 없는 환노출 ETF 만 — 환헤지 ETF 는 환율을 곱하면 틀림
-# 펀드 코드는 운용사 사이트에서 토스 종목 정보의 ISIN 으로 찾은 값
-NEXT_OPEN_BASKETS = {
-    # 나스닥100 추종 — QQQ 로 근사
-    "KRX-367380": Basket(proxy="QQQ", nav_source=("ace", "K55101DB1182")),
-    # S&P500 추종 — SPY 로 근사
-    "KRX-360750": Basket(proxy="SPY", nav_source=("tiger", "KR7360750004")),
-    # 미국 우주 종목 10개 — 구성 종목으로
-    "KRX-0183J0": Basket(holdings_fund="KR70183J0002", nav_source=("tiger", "KR70183J0002")),
-}
 
 
 # 운용사 구성 종목 표가 옛 심볼을 쓰는 경우 — 토스 종목 정보(ISIN)로 같은 회사임을 확인한 것만
@@ -99,14 +83,16 @@ def _us_regular_end(entry: dict[str, Any] | None) -> datetime | None:
 
 
 def build_view(
-    market: str,
+    instrument: Instrument,
     source: MarketSource,
     holdings_for: Callable[[str], list[Holding]],
     now: datetime,
     nav_for: Callable[[str, str], Nav | None] = lambda kind, fund: None,
 ) -> NextOpenView:
-    basket = NEXT_OPEN_BASKETS[market]
-    instrument = find_instrument(market)
+    basket = instrument.next_open
+    if basket is None:
+        raise ValueError(f"다음 개장 추정 설정이 없는 종목: {instrument.market}")
+    market = instrument.market
     calendar = source.get("/api/v1/market-calendar/KR", {})["result"]
     today = _regular(calendar["today"])
     if today is not None and today[0] <= now < today[1]:
@@ -183,7 +169,7 @@ def build_view(
     us_ends = [_us_regular_end(us_calendar.get(k)) for k in ("today", "nextBusinessDay")]
     us_pending = any(end is not None and now < end <= next_open_at for end in us_ends)
 
-    nav = nav_for(*basket.nav_source) if basket.nav_source else None
+    nav = nav_for(*basket.nav) if basket.nav else None
     # 다른 날 기준가를 쓰면 반영된 미국장이 달라져 틀림 — 한국 종가와 같은 날 것만
     nav_estimate = nav[1] * (1 + result.change) if nav is not None and nav[0] == kr_day else None
 

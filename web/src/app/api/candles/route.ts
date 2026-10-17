@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 
 import type { CandleOut } from "@/lib/candles";
 import { engineJson } from "@/lib/engine";
-import { MARKETS } from "@/lib/markets";
+import { getMarkets } from "@/lib/universe";
 
 const INTERVALS = new Set(["day", "week", "month"]);
 
@@ -10,7 +10,8 @@ const INTERVALS = new Set(["day", "week", "month"]);
 export async function GET(req: NextRequest) {
   const market = req.nextUrl.searchParams.get("market") ?? "";
   const interval = req.nextUrl.searchParams.get("interval") ?? "";
-  if (!MARKETS.some((m) => m.market === market) || !INTERVALS.has(interval)) {
+  // 설정된 종목만 — 아무 문자열이나 엔진에 넘기지 않게
+  if (!(await getMarkets()).some((m) => m.market === market) || !INTERVALS.has(interval)) {
     return Response.json({ error: "잘못된 종목 또는 막대 단위" }, { status: 400 });
   }
   const candles = await engineJson<CandleOut[]>(`/candles?market=${market}&interval=${interval}`);

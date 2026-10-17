@@ -4,6 +4,8 @@ from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from orbit.marketdata.candle import ONE_DAY, Candle
+from orbit.marketdata.instruments import COIN_MARKETS, Universe
+from orbit.marketdata.names import InstrumentName
 
 # README 화면 캡처용 가상 시세 — 거래소 데이터는 약관상 공개 배포할 수 없음
 # 실제 종목과 무관한 무작위 경로. 화면에서는 "가상 데이터"·예시 종목 이름으로만 보여줌
@@ -33,3 +35,23 @@ def demo_candles(market: str, start: datetime, end: datetime) -> list[Candle]:
             price = close
         day += ONE_DAY
     return candles
+
+
+def demo_names(universe: Universe) -> list[InstrumentName]:
+    # 가상 데이터 DB 의 이름 캐시 — 화면에 실제 종목 이름이 하나도 나가지 않게 예시 이름만
+    names = [
+        InstrumentName(market, market.split("-", 1)[1], f"예시 코인 {chr(65 + i)}", "DEMO", "KRW")
+        for i, market in enumerate(COIN_MARKETS)
+    ]
+    dashboard = watch = 0
+    for instrument in universe.instruments:
+        if instrument.dashboard:
+            dashboard += 1
+            name = f"예시 종목 {dashboard}"
+        else:
+            watch += 1
+            name = f"예시 관심 종목 {watch}"
+        names.append(
+            InstrumentName(instrument.market, instrument.symbol, name, "DEMO", instrument.currency)
+        )
+    return names

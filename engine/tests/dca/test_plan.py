@@ -8,7 +8,7 @@ from orbit.marketdata.candle import Candle
 def _candles(days: list[date], prices: list[int]) -> list[Candle]:
     return [
         Candle(
-            "KRX-367380",
+            "KRX-100000",
             datetime(d.year, d.month, d.day, tzinfo=UTC),
             *(Decimal(p),) * 4,
             Decimal(1),

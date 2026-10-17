@@ -1,7 +1,7 @@
 import logging
 import sqlite3
 import threading
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -14,15 +14,45 @@ from pydantic import BaseModel
 from orbit.backtest.runs import latest_runs, load_trades
 from orbit.backtest.validate import latest_checks
 from orbit.dca.plan import next_payday, run_dca
-from orbit.estimate.live import NEXT_OPEN_BASKETS, NextOpenView
+from orbit.estimate.live import NextOpenView
 from orbit.indicators.moving_average import sma
 from orbit.ledger.book import Ledger
 from orbit.marketdata.aggregate import Interval, aggregate
 from orbit.marketdata.candle import Candle
-from orbit.marketdata.instruments import SEOUL
+from orbit.marketdata.instruments import COIN_MARKETS, COINS, SEOUL, Universe
+from orbit.marketdata.names import load_names
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.upbit_ticker import Ticker
-from orbit.signals.today import Stance, is_upbit_market, today_signals
+from orbit.signals.today import STOCK_SIGNAL_STRATEGIES, Stance, is_upbit_market, today_signals
+from orbit.strategies.registry import build_strategy
+
+
+class MarketOut(BaseModel):
+    market: str  # 저장·API 키 (KRW-·US-·KRX-)
+    name: str  # 토스 표시 이름 — 아직 못 받았으면 종목코드
+    group: Literal["coin", "stock"]
+    currency: Literal["KRW", "USD"]
+    dashboard: bool  # 맨 위 타일
+    dca: bool = False  # 매달 적립 — 적립식 분석
+    next_open: bool = False  # 다음 개장 추정 대상
+    sector: str | None = None  # 관심 종목 분야
+
+
+class TrendOut(BaseModel):
+    window: int  # 이동평균 기간 (거래일)
+    above: bool  # 이동평균 규칙이 보유 쪽 — 신호와 같은 규칙 함수
+
+
+class WatchRowOut(BaseModel):
+    market: str
+    sector: str
+    currency: Literal["KRW", "USD"]
+    as_of: date | None = None  # 마지막 확정 봉 — 일봉이 없으면 이하 모두 없음
+    close: Decimal | None = None
+    change: Decimal | None = None  # 전일 종가 대비
+    return_1y: Decimal | None = None  # 약 1년(252거래일) 전 종가 대비
+    from_high: Decimal | None = None  # 최근 52주 최고 종가 대비 (0 이하)
+    trend: list[TrendOut] = []
 
 
 class CandleOut(BaseModel):
@@ -183,6 +213,11 @@ log = logging.getLogger(__name__)
 
 DCA_EXAMPLE_MONTHLY = Decimal(1_000_000)
 POSITION_WINDOWS = (60, 120)
+# 관심 종목 추세 — 주식 신호 규칙(이동평균) 그대로, 신호를 바꾸면 같이 바뀌게
+TREND_RULES = [
+    (int(spec.split("-")[1]), build_strategy(spec)[0]) for spec in STOCK_SIGNAL_STRATEGIES
+]
+YEAR_BARS = 252  # 주식 1년 거래일
 
 
 def _weekday_only(day: date) -> date:
@@ -195,14 +230,18 @@ def _no_ticker(market: str) -> Ticker | None:
     return None
 
 
+NO_STOCKS = Universe()  # 종목 설정이 없으면 코인만
+
+
 def create_app(
     connect: Callable[[], sqlite3.Connection],
     get_ticker: Callable[[str], Ticker | None] = _no_ticker,
     kr_trading_day_for: Callable[[date], date] | None = None,
     today: Callable[[], date] = lambda: datetime.now(SEOUL).date(),
     next_open: Callable[[str], NextOpenView] | None = None,
-    warm_markets: Sequence[str] = (),
+    universe: Universe = NO_STOCKS,
 ) -> FastAPI:
+    warm_markets = COIN_MARKETS + universe.markets
     # 전 기간 일봉을 Decimal 로 바꾸는 게 요청 비용 대부분 — DB 가 그대로면 읽어 둔 걸 씀
     cache: dict[str, tuple[tuple[int, int | None], list[Candle]]] = {}
 
@@ -230,6 +269,66 @@ def create_app(
         yield
 
     app = FastAPI(title="orbit", docs_url=None, redoc_url=None, lifespan=lifespan)
+
+    @app.get("/markets")
+    def markets() -> list[MarketOut]:
+        # 종목 목록은 로컬 설정에서, 이름은 토스 종목 정보 캐시에서 (가상 데이터 DB 는 예시 이름)
+        conn = connect()
+        try:
+            names = load_names(conn)
+        finally:
+            conn.close()
+        out = [
+            MarketOut(
+                market=market,
+                name=names[market].name if market in names else name,
+                group="coin",
+                currency="KRW",
+                dashboard=True,
+            )
+            for market, name in COINS
+        ]
+        for instrument in universe.instruments:
+            cached = names.get(instrument.market)
+            out.append(
+                MarketOut(
+                    market=instrument.market,
+                    name=cached.name if cached else instrument.symbol,
+                    group="stock",
+                    currency=instrument.currency,
+                    dashboard=instrument.dashboard,
+                    dca=instrument.dca,
+                    next_open=instrument.next_open is not None,
+                    sector=instrument.sector,
+                )
+            )
+        return out
+
+    @app.get("/watchlist")
+    def watchlist() -> list[WatchRowOut]:
+        # 관심 종목 — 사라·말라가 아니라 사실(가격 위치·추세)만
+        rows = []
+        for instrument in universe.watchlist():
+            assert instrument.sector is not None  # watchlist() 는 분야가 있는 종목만
+            row = WatchRowOut(
+                market=instrument.market, sector=instrument.sector, currency=instrument.currency
+            )
+            candles = load_candles(instrument.market)
+            if len(candles) >= 2:
+                last = candles[-1].close
+                row.as_of = candles[-1].start.date()
+                row.close = last
+                row.change = last / candles[-2].close - 1
+                if len(candles) > YEAR_BARS:
+                    row.return_1y = last / candles[-YEAR_BARS - 1].close - 1
+                row.from_high = last / max(c.close for c in candles[-YEAR_BARS:]) - 1
+                # 대시보드 신호와 같은 규칙 — 일봉이 모자란 기간은 뺌
+                for window, strategy in TREND_RULES:
+                    decision = strategy(candles)
+                    if decision.enough_data:
+                        row.trend.append(TrendOut(window=window, above=decision.target_weight > 0))
+            rows.append(row)
+        return rows
 
     @app.get("/candles")
     def candles(
@@ -328,7 +427,8 @@ def create_app(
     @app.get("/next-open")
     def next_open_estimate(market: str) -> NextOpenOut | None:
         # 국내 상장 미국 ETF — 한국 종가 뒤 미국장·환율 변동으로 다음 개장가를 추정
-        if next_open is None or market not in NEXT_OPEN_BASKETS:
+        instrument = universe.find(market)
+        if next_open is None or instrument is None or instrument.next_open is None:
             return None
         try:
             view = next_open(market)

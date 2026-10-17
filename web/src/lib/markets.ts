@@ -1,3 +1,4 @@
+import type { components } from "@/lib/api";
 import type { Currency } from "@/lib/format";
 
 export type MarketGroup = "coin" | "stock";
@@ -8,43 +9,45 @@ export type MarketInfo = {
   group: MarketGroup;
   currency: Currency;
   source: string; // 시세 출처 — 화면 하단 설명
-  core?: boolean; // 사용자가 다른 계좌에서 매달 적립하는 코어 ETF — 보유/현금 신호 대신 적립식 분석
+  core: boolean; // 매달 적립하는 종목 — 보유/현금 신호 대신 적립식 분석
+  nextOpen: boolean; // 국내 상장 해외 ETF 다음 개장 추정 대상
+  dashboard: boolean; // 맨 위 타일
 };
 
 export const GROUPS: readonly { value: MarketGroup; label: string }[] = [
   { value: "coin", label: "코인" },
-  { value: "stock", label: "미국주식" },
+  { value: "stock", label: "주식" },
 ];
 
-// README 캡처용 가상 데이터 화면 — 실제 종목처럼 보이지 않게 이름을 바꾸고 마켓 코드를 숨김
+// README 캡처용 가상 데이터 화면 — 예시 이름은 엔진이 붙이고, 웹은 표시와 마켓 코드 숨김만
 export const DEMO = process.env.NEXT_PUBLIC_ORBIT_DEMO === "1";
 
-const DEMO_NAMES: Record<string, string> = {
-  "KRW-BTC": "예시 코인 A",
-  "KRW-ETH": "예시 코인 B",
-  "US-QQQ": "예시 미국 ETF A",
-  "US-SPY": "예시 미국 ETF B",
-  "KRX-367380": "예시 국내 ETF A",
-  "KRX-360750": "예시 국내 ETF B",
-  "KRX-0183J0": "예시 국내 ETF C",
-};
+// 종목 목록은 엔진(로컬 설정)에서 — 레포에 내 종목이 드러나지 않게 웹에는 목록을 두지 않음
+export const toMarketInfo = (m: components["schemas"]["MarketOut"]): MarketInfo => ({
+  market: m.market,
+  name: m.name,
+  group: m.group,
+  currency: m.currency,
+  source: DEMO ? "가상 데이터" : m.group === "coin" ? "업비트 원화" : "토스증권 (수정주가)",
+  core: m.dca ?? false,
+  nextOpen: m.next_open ?? false,
+  dashboard: m.dashboard,
+});
 
-// 정책상 코인은 BTC·ETH 만. 주식 종목코드는 토스 종목 정보로 확인한 값
-const REAL_MARKETS: readonly MarketInfo[] = [
-  { market: "KRW-BTC", name: "비트코인", group: "coin", currency: "KRW", source: "업비트 원화" },
-  { market: "KRW-ETH", name: "이더리움", group: "coin", currency: "KRW", source: "업비트 원화" },
-  { market: "US-QQQ", name: "QQQ", group: "stock", currency: "USD", source: "토스증권 (수정주가)" },
-  { market: "US-SPY", name: "SPY", group: "stock", currency: "USD", source: "토스증권 (수정주가)" },
-  { market: "KRX-367380", name: "ACE 미국나스닥100", group: "stock", currency: "KRW", source: "토스증권 (수정주가)", core: true },
-  { market: "KRX-360750", name: "TIGER 미국S&P500", group: "stock", currency: "KRW", source: "토스증권 (수정주가)", core: true },
-  { market: "KRX-0183J0", name: "TIGER 미국우주테크", group: "stock", currency: "KRW", source: "토스증권 (수정주가)" },
-];
+// 엔진에 닿지 않을 때 — 정책상 코인은 BTC·ETH 고정
+export const COIN_FALLBACK: readonly MarketInfo[] = [
+  ["KRW-BTC", "비트코인"],
+  ["KRW-ETH", "이더리움"],
+].map(([market, name], i) => ({
+  market,
+  name: DEMO ? `예시 코인 ${String.fromCharCode(65 + i)}` : name,
+  group: "coin",
+  currency: "KRW",
+  source: DEMO ? "가상 데이터" : "업비트 원화",
+  core: false,
+  nextOpen: false,
+  dashboard: true,
+}));
 
-export const MARKETS: readonly MarketInfo[] = DEMO
-  ? REAL_MARKETS.map((m) => ({ ...m, name: DEMO_NAMES[m.market] ?? m.name, source: "가상 데이터" }))
-  : REAL_MARKETS;
-
-export const findMarket = (value: string | string[] | undefined): MarketInfo =>
-  MARKETS.find((m) => m.market === value) ?? MARKETS[0];
-
-export const marketsOf = (group: MarketGroup) => MARKETS.filter((m) => m.group === group);
+export const findMarket = (markets: readonly MarketInfo[], value: string | string[] | undefined): MarketInfo =>
+  markets.find((m) => m.market === value) ?? markets[0];

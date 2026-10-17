@@ -2,7 +2,7 @@ import type { Tile } from "@/components/market-switcher";
 import type { components } from "@/lib/api";
 import type { CandleOut } from "@/lib/candles";
 import { engineJson } from "@/lib/engine";
-import { MARKETS, type MarketInfo } from "@/lib/markets";
+import type { MarketInfo } from "@/lib/markets";
 import { dcaLine, type Line, signalLine } from "@/lib/summary";
 
 const SPARKLINE_DAYS = 60; // 종목 타일 미니 차트 — 약 3개월
@@ -35,7 +35,7 @@ async function tileOf(info: MarketInfo): Promise<Tile | null> {
   return { close, change: close / closes[closes.length - 2] - 1, closes, line: lineOf(verdict) };
 }
 
-export async function allTiles(): Promise<Partial<Record<string, Tile>>> {
-  const tiles = await Promise.all(MARKETS.map(async (m) => [m.market, await tileOf(m)] as const));
+export async function allTiles(markets: readonly MarketInfo[]): Promise<Partial<Record<string, Tile>>> {
+  const tiles = await Promise.all(markets.map(async (m) => [m.market, await tileOf(m)] as const));
   return Object.fromEntries(tiles.flatMap(([market, tile]) => (tile ? [[market, tile]] : [])));
 }

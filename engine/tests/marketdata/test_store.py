@@ -54,3 +54,27 @@ def test_받은_시각은_재수집하면_갱신() -> None:
     assert conn.execute("SELECT fetched_ts FROM daily_candles").fetchone() == (
         int(later.timestamp()),
     )
+
+
+def test_미국_수정주가는_소수_8자리까지_그대로_저장() -> None:
+    # 액면분할을 여러 번 한 종목은 오래전 수정주가가 1달러 미만·소수 8자리로 옴
+    store = CandleStore(sqlite3.connect(":memory:"))
+
+    store.upsert([_candle(0, "0.95962272", market="US-AAA")], fetched_at=D)
+
+    assert store.load("US-AAA")[0].close == Decimal("0.95962272")
+
+
+def test_미국_일봉은_자릿수를_바꾸며_다시_받도록_지우고_다른_시장은_그대로() -> None:
+    from orbit.db.migrations import MIGRATIONS
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript("".join(MIGRATIONS[:6]) + "PRAGMA user_version = 6;")
+    conn.execute("INSERT INTO daily_candles VALUES ('US-AAA', 0, 1, 1, 1, 1, 1, 0)")
+    conn.execute("INSERT INTO daily_candles VALUES ('KRW-BTC', 0, 1, 1, 1, 1, 1, 0)")
+    conn.commit()
+
+    CandleStore(conn)  # 마이그레이션 적용
+
+    markets = [r[0] for r in conn.execute("SELECT market FROM daily_candles").fetchall()]
+    assert markets == ["KRW-BTC"]

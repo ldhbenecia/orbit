@@ -111,6 +111,21 @@ MIGRATIONS: list[str] = [
     ALTER TABLE rule_checks ADD COLUMN sharpe_ppm INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE rule_checks ADD COLUMN edge_ppm INTEGER;  -- 전체 기간·보유 외 규칙만, 나머지는 NULL
     """,
+    # 6: 종목 이름 캐시 — 종목 목록은 로컬 설정에만 두고, 이름·거래소는 토스 종목 정보에서 받아 둠
+    """
+    CREATE TABLE instruments (
+        market TEXT PRIMARY KEY,        -- US-·KRX- 저장 키
+        symbol TEXT NOT NULL,
+        name TEXT NOT NULL,             -- 토스 표시 이름
+        exchange TEXT NOT NULL,         -- NASDAQ · NYSE · KOSPI 등
+        currency TEXT NOT NULL CHECK (currency IN ('KRW', 'USD')),
+        fetched_ts INTEGER NOT NULL     -- 받은 시각, epoch 초 (UTC)
+    ) STRICT, WITHOUT ROWID;
+    """,
+    # 7: 미국 가격 자릿수 4 → 8 — 다시 받을 수 있는 시세 캐시라 지우고 새 자릿수로 다시 받음
+    """
+    DELETE FROM daily_candles WHERE market LIKE 'US-%';
+    """,
 ]
 
 

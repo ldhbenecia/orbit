@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import Link from "next/link";
 import { connection } from "next/server";
 
 import { Logo } from "@/components/logo";
 import { MarketSwitcher } from "@/components/market-switcher";
 import { DEMO } from "@/lib/markets";
 import { allTiles } from "@/lib/overview";
+import { getMarkets } from "@/lib/universe";
 
 import "./globals.css";
 
@@ -24,7 +26,8 @@ export const metadata: Metadata = {
 // 레이아웃은 종목을 바꿔도 다시 그려지지 않음 — 전 종목 타일은 처음 열 때 한 번만 받고, 종목 전환 때는 그 종목 것만 받음
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   await connection();
-  const tiles = await allTiles();
+  const dashboard = (await getMarkets()).filter((m) => m.dashboard);
+  const tiles = await allTiles(dashboard);
   return (
     <html lang="ko" className={`${pretendard.variable} h-full antialiased`}>
       <body className="min-h-full font-sans">
@@ -37,8 +40,18 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 가상 데이터 — 실제 시세 아님
               </span>
             )}
+            <nav className="ml-auto flex gap-4 text-sm">
+              <Link href="/" className="text-muted hover:text-foreground">
+                대시보드
+              </Link>
+              <Link href="/watchlist" className="text-muted hover:text-foreground">
+                관심 종목
+              </Link>
+            </nav>
           </header>
-          <MarketSwitcher tiles={tiles}>{children}</MarketSwitcher>
+          <MarketSwitcher markets={dashboard} tiles={tiles}>
+            {children}
+          </MarketSwitcher>
         </main>
       </body>
     </html>

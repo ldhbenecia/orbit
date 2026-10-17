@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/markets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Markets */
+        get: operations["markets_markets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/watchlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Watchlist */
+        get: operations["watchlist_watchlist_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/candles": {
         parameters: {
             query?: never;
@@ -241,6 +275,37 @@ export interface components {
          * @enum {string}
          */
         Interval: "day" | "week" | "month";
+        /** MarketOut */
+        MarketOut: {
+            /** Market */
+            market: string;
+            /** Name */
+            name: string;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "coin" | "stock";
+            /**
+             * Currency
+             * @enum {string}
+             */
+            currency: "KRW" | "USD";
+            /** Dashboard */
+            dashboard: boolean;
+            /**
+             * Dca
+             * @default false
+             */
+            dca: boolean;
+            /**
+             * Next Open
+             * @default false
+             */
+            next_open: boolean;
+            /** Sector */
+            sector?: string | null;
+        };
         /** NextOpenLegOut */
         NextOpenLegOut: {
             /** Symbol */
@@ -439,6 +504,13 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** TrendOut */
+        TrendOut: {
+            /** Window */
+            window: number;
+            /** Above */
+            above: boolean;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -508,6 +580,33 @@ export interface components {
             /** Fills */
             fills: components["schemas"]["WalletFillOut"][];
         };
+        /** WatchRowOut */
+        WatchRowOut: {
+            /** Market */
+            market: string;
+            /** Sector */
+            sector: string;
+            /**
+             * Currency
+             * @enum {string}
+             */
+            currency: "KRW" | "USD";
+            /** As Of */
+            as_of?: string | null;
+            /** Close */
+            close?: string | null;
+            /** Change */
+            change?: string | null;
+            /** Return 1Y */
+            return_1y?: string | null;
+            /** From High */
+            from_high?: string | null;
+            /**
+             * Trend
+             * @default []
+             */
+            trend: components["schemas"]["TrendOut"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -517,6 +616,46 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    markets_markets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketOut"][];
+                };
+            };
+        };
+    };
+    watchlist_watchlist_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchRowOut"][];
+                };
+            };
+        };
+    };
     candles_candles_get: {
         parameters: {
             query?: {

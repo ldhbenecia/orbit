@@ -13,6 +13,7 @@
 ## 주요 기능
 
 - **종목 타일** — 맨 위에 전 종목의 가격·전일 대비·최근 3개월 흐름과 한 줄 신호. 누르면 그 종목으로
+- **관심 종목** — 분야별로 가격·1년 수익·52주 고점 대비·추세(이동평균 위/아래). 사라·말라 대신 사실만
 - **오늘의 규칙 신호** — 규칙마다 보유·현금·돌파 여부, 며칠째인지, 지금 가격이 평균보다 얼마나 높은지·낮은지. 맨 위에 "규칙 N개 중 M개가 매수 쪽"
 - **다음 개장 예상** — 국내 상장 미국 ETF 는 국내 장이 닫힌 뒤 미국장·환율 변동을 반영해 다음 날 시가를 추정
 - **적립식 분석** — 매달 정해진 날 적립하는 ETF 용. 다음 적립일, 지금 가격이 평균보다 싼지, 그렇게 사 왔다면 어땠는지
@@ -30,7 +31,7 @@
 | 자산 | 종목 | 시세 |
 |---|---|---|
 | 코인 | 비트코인, 이더리움 | 업비트 공개 API (원화) |
-| 미국주식 | QQQ, SPY, ACE 미국나스닥100, TIGER 미국S&P500, TIGER 미국우주테크 | 토스증권 Open API (조회만) |
+| 주식 | 미국 주식·ETF, 국내 상장 ETF — 목록은 로컬 설정 `config/markets.local.yaml` (예시: `config/markets.example.yaml`) | 토스증권 Open API (조회만) |
 
 ## 원칙
 
@@ -57,7 +58,8 @@ cp .env.example .env   # 토스증권 Open API 키 (미국주식·국내 ETF 시
 ```
 
 ```bash
-cp config/orbit.example.yaml config/orbit.local.yaml   # 가상 지갑을 쓰려면 — 예산·규칙을 내 것으로 (커밋 안 됨)
+cp config/markets.example.yaml config/markets.local.yaml  # 종목 목록 — 대시보드·적립·관심 종목 (커밋 안 됨)
+cp config/orbit.example.yaml config/orbit.local.yaml      # 가상 지갑을 쓰려면 — 예산·규칙을 내 것으로 (커밋 안 됨)
 ```
 
 ```bash
