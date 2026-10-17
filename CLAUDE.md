@@ -79,6 +79,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 | [strategy-rules](.claude/rules/strategy-rules.md) | 전략·백테스트·지표 |
 | [time-and-markets](.claude/rules/time-and-markets.md) | 스케줄·캔들·날짜 로직 |
 | [python-conventions](.claude/rules/python-conventions.md) | `engine/` |
+| [testing](.claude/rules/testing.md) | 테스트 작성 — 규칙을 먼저, 항등식·두 계산 일치·전수 순회 |
 | [web-conventions](.claude/rules/web-conventions.md) | `web/` (디자인 원칙 포함) |
 | [git-conventions](.claude/rules/git-conventions.md) | 브랜치·커밋·PR |
 | [code-comments](.claude/rules/code-comments.md) | 모든 코드 |
