@@ -75,8 +75,8 @@ def instant(facts: list[Fact], end: date, known: date) -> int | None:
 
 
 def _cover_shares(facts: Facts, accn: str) -> int | None:
-    # 표지 주식 수 — 주식 종류별로 나눠 적은 회사는 값이 여럿이라 믿지 않음
-    cover = [f for f in facts.get("cover_shares", []) if f.accn == accn]
+    # 표지 주식 수 — 주식 종류별로 나눠 적은 회사는 값이 여럿이라 믿지 않음, 0 으로 적은 것도 뺌
+    cover = [f for f in facts.get("cover_shares", []) if f.accn == accn and f.value > 0]
     if not cover:
         return None
     last = max(f.end for f in cover)
@@ -84,14 +84,16 @@ def _cover_shares(facts: Facts, accn: str) -> int | None:
     return values.pop() if len(values) == 1 else None
 
 
-def _matches_weighted(facts: Facts, accn: str, end: date, shares: int) -> bool:
-    # 같은 보고서의 최근 분기 가중평균 주식 수와 크게 다르면 가격과 곱할 수 없음
+def _weighted_quarter(facts: Facts, accn: str, end: date) -> int | None:
+    # 같은 보고서의 최근 분기 가중평균 주식 수 (회사 전체, 주식 종류 합)
     weighted = [f for f in facts.get("weighted_shares", []) if f.accn == accn and f.end == end]
-    if not weighted:
-        return False
-    quarter = min(weighted, key=_days)
+    quarter = min(weighted, key=_days, default=None)
+    return quarter.value if quarter and quarter.value > 0 else None
+
+
+def _close(shares: int, weighted: int) -> bool:
     low, high = SHARES_TOLERANCE
-    return quarter.value > 0 and low <= Fraction(shares, quarter.value) <= high
+    return low <= Fraction(shares, weighted) <= high
 
 
 def _split_ratio(newer: int, older: int) -> Fraction:
@@ -117,8 +119,10 @@ def split_factors(cover: list[tuple[date, int]]) -> dict[date, Fraction]:
     return factors
 
 
-def snapshots(facts: Facts) -> list[Snapshot]:
+def snapshots(facts: Facts, weighted_fallback: bool = False) -> list[Snapshot]:
     # 보고서 하나 = 그 공시일에 시장이 알던 재무 상태 하나 (뒤에 나온 정정값을 섞지 않음)
+    # weighted_fallback: 표지 주식 수가 없을 때 회사 전체 가중평균으로 대신 — 주식 종류마다
+    # 1주의 가치가 같을 때만 맞음 (예: 표지를 종류별로만 적는 회사)
     income = facts.get("net_income", [])
     revenue = facts.get("revenue", [])
     reports: dict[date, tuple[str, date]] = {}
@@ -129,16 +133,20 @@ def snapshots(facts: Facts) -> list[Snapshot]:
         # 같은 날 공시가 둘이면 기간이 늦은 쪽
         if current is None or fact.end > current[1]:
             reports[fact.filed] = (fact.accn, fact.end)
-    cover = {
-        filed: shares
-        for filed, (accn, _) in reports.items()
-        if (shares := _cover_shares(facts, accn)) is not None
-    }
-    factors = split_factors(list(cover.items()))
+    # 보고서별 (주식 수, 가격과 곱해도 되는지) — 맞지 않는 값도 분할 감지에는 씀
+    shares_by: dict[date, tuple[int, bool]] = {}
+    for filed, (accn, end) in reports.items():
+        cover = _cover_shares(facts, accn)
+        weighted = _weighted_quarter(facts, accn, end)
+        if cover is not None:
+            # 가중평균과 크게 다르면 가격과 곱할 수 없음
+            shares_by[filed] = (cover, weighted is not None and _close(cover, weighted))
+        elif weighted_fallback and weighted is not None:
+            shares_by[filed] = (weighted, True)
+    factors = split_factors([(filed, shares) for filed, (shares, _) in shares_by.items()])
     out = []
-    for filed, (accn, end) in sorted(reports.items()):
-        shares = cover.get(filed)
-        verified = shares is not None and _matches_weighted(facts, accn, end, shares)
+    for filed, (_, end) in sorted(reports.items()):
+        shares, usable = shares_by.get(filed, (0, False))
         out.append(
             Snapshot(
                 filed=filed,
@@ -149,7 +157,7 @@ def snapshots(facts: Facts) -> list[Snapshot]:
                 operating_cf=ttm(facts.get("operating_cf", []), end, filed),
                 capex=ttm(facts.get("capex", []), end, filed),
                 equity=instant(facts.get("equity", []), end, filed),
-                shares=round(shares * factors[filed]) if verified and shares else None,
+                shares=round(shares * factors[filed]) if usable else None,
             )
         )
     return out

@@ -545,7 +545,11 @@ def _sync_fundamentals(db: Path) -> None:
                     continue
                 time.sleep(SEC_INTERVAL)
                 try:
-                    snaps = snapshots(fetch_facts(client, cik))
+                    # 종목코드에 주식 종류가 붙은 상장주(EXA.B)는 1주 가치가 종류마다 다를 수 있어
+                    # 회사 전체 가중평균 주식 수와 가격을 곱하지 않음
+                    snaps = snapshots(
+                        fetch_facts(client, cik), weighted_fallback="." not in instrument.symbol
+                    )
                 except httpx.HTTPError as error:
                     # 한 회사가 실패해도 나머지는 받음 — 시세와 무관한 참고 정보
                     log.warning("%s 재무 받기 실패 (%s)", instrument.market, type(error).__name__)

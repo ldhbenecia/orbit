@@ -68,3 +68,23 @@ def test_표지_주식수와_가중평균_주식수는_주식_단위로() -> Non
 
     assert [f.value for f in facts["weighted_shares"]] == [1_000]
     assert [(f.start, f.value) for f in facts["cover_shares"]] == [(None, 1_010)]
+
+
+def test_순이익_이름을_바꾼_회사는_다음_이름으로_이어_읽음() -> None:
+    # 어떤 해부터 NetIncomeLoss 대신 ProfitLoss 로만 공시 — 같은 기간이면 NetIncomeLoss 우선
+    facts = parse_facts(
+        body(
+            {
+                "NetIncomeLoss": [row("2024-01-01", "2024-12-31", 100, "2025-02-01", "a1", "10-K")],
+                "ProfitLoss": [
+                    row("2024-01-01", "2024-12-31", 103, "2025-02-01", "a1", "10-K"),
+                    row("2025-01-01", "2025-12-31", 120, "2026-02-01", "a2", "10-K"),
+                ],
+            }
+        )
+    )
+
+    assert sorted((f.end, f.value) for f in facts["net_income"]) == [
+        (d("2024-12-31"), 100),
+        (d("2025-12-31"), 120),
+    ]

@@ -16,7 +16,8 @@ FORMS = frozenset({"10-K", "10-Q"})
 
 # 같은 값을 회사·연도마다 다른 이름으로 공시함 — 앞쪽 이름을 우선
 CONCEPTS: dict[str, tuple[str, ...]] = {
-    "net_income": ("NetIncomeLoss",),
+    # 소수주주 몫을 빼지 않은 ProfitLoss 로만 공시하는 회사가 있음 — 같은 기간이면 앞쪽
+    "net_income": ("NetIncomeLoss", "ProfitLoss"),
     "revenue": (
         "Revenues",
         "RevenueFromContractWithCustomerExcludingAssessedTax",

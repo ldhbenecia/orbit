@@ -119,6 +119,18 @@ def test_주식수는_가중평균과_교차_확인될_때만(
     assert snaps[-1].shares == expected
 
 
+@pytest.mark.parametrize(
+    ("fallback", "expected"), [(True, [None, 10_000, 10_100]), (False, [None] * 3)]
+)
+def test_표지가_없으면_허용할_때만_가중평균으로_대신하고_분할도_반영(
+    fallback: bool, expected: list[int | None]
+) -> None:
+    # 주식 종류별로만 표지를 적는 회사 — 1분기 뒤 10:1 분할
+    snaps = snapshots(_company({}, {"q1": 1000, "q2": 10_100}), weighted_fallback=fallback)
+
+    assert [s.shares for s in snaps] == expected
+
+
 def test_가중평균이_없으면_주식수를_믿지_않음() -> None:
     assert snapshots(_company({"q2": [1000]}, {}))[-1].shares is None
 
@@ -137,6 +149,12 @@ def test_액면분할만_옛_주식수에_반영(older: int, newer: int, factor:
 
     assert factors[d(Q2)] == 1
     assert factors[d(Q1)] == factor
+
+
+def test_표지에_0_으로_적은_보고서는_모름으로_보고_분할_계산에서_뺌() -> None:
+    snaps = snapshots(_company({"k25": [0], "q1": [1000], "q2": [1010]}, {"q1": 1000, "q2": 1000}))
+
+    assert [s.shares for s in snaps] == [None, 1000, 1010]
 
 
 def test_분할은_여러_번이면_곱해서_반영() -> None:
