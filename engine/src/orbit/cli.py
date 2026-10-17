@@ -29,7 +29,7 @@ from orbit.fundamentals.snapshot import snapshots
 from orbit.fundamentals.store import save_snapshots
 from orbit.ledger.book import Ledger
 from orbit.marketdata.candle import Candle
-from orbit.marketdata.demo import demo_candles, demo_names
+from orbit.marketdata.demo import demo_candles, demo_names, demo_snapshots
 from orbit.marketdata.fund_nav import Nav, fetch_ace_nav, fetch_tiger_nav
 from orbit.marketdata.instruments import (
     COIN_MARKETS,
@@ -346,6 +346,10 @@ def _demo_data(db: Path) -> None:
     conn = sqlite3.connect(db)
     try:
         save_names(conn, demo_names(universe), datetime.now(UTC))
+        for instrument in universe.instruments:
+            if instrument.currency == "USD":
+                snaps = demo_snapshots(instrument.market, date(2016, 1, 1), end.date())
+                save_snapshots(conn, instrument.market, snaps, datetime.now(UTC))
     finally:
         conn.close()
     _validate(validated_markets(universe), db)
