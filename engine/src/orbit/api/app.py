@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from orbit.backtest.runs import latest_runs, load_trades
 from orbit.backtest.validate import latest_checks
+from orbit.dca.payday import WINDOW_MONTHS, RuleName, Spend, compare
 from orbit.dca.plan import next_payday, run_dca
 from orbit.estimate.live import NextOpenView
 from orbit.fundamentals.metrics import Fundamentals, Position, fundamentals
@@ -24,6 +25,7 @@ from orbit.marketdata.candle import Candle
 from orbit.marketdata.instruments import COIN_MARKETS, COINS, SEOUL, Universe
 from orbit.marketdata.names import load_names
 from orbit.marketdata.store import CandleStore
+from orbit.marketdata.toss_rules import us_fee
 from orbit.marketdata.upbit_ticker import Ticker
 from orbit.signals.today import STOCK_SIGNAL_STRATEGIES, Stance, is_upbit_market, today_signals
 from orbit.strategies.registry import build_strategy
@@ -178,6 +180,30 @@ class DcaOut(BaseModel):
     average_cost: Decimal | None  # 산 금액 ÷ 산 수량
 
 
+class PaydayRuleOut(BaseModel):
+    rule: RuleName
+    invested: Decimal
+    final_value: Decimal  # 마지막 종가 평가액 + 남은 현금
+    return_on_invested: Decimal
+    worst_vs_invested: Decimal
+    buys: int  # 실제로 산 달 수
+    cash: Decimal  # 아직 안 쓴 돈
+    # 5년 구간 중 단순 적립보다 평가액이 컸던 비율 — 단순 적립 자신, 5년 미만이면 없음
+    beat_plain: Decimal | None
+    next_spend: Spend  # 마지막 확정 봉 기준 다음 월급날에 할 일
+    next_reason: str
+
+
+class PaydayOut(BaseModel):
+    # 미국 주식 월급날 규칙 비교 — 과거 데이터에서 이랬다는 것, 앞으로가 아님
+    as_of: datetime  # 마지막 확정 봉
+    start: datetime  # 비교한 첫 월급날 (52주·200일을 셀 수 있게 1년 뒤부터)
+    monthly: Decimal  # 예시 금액 (개인 금액 아님)
+    windows: int  # 5년 구간 수
+    window_months: int
+    rules: list[PaydayRuleOut]
+
+
 class NextOpenLegOut(BaseModel):
     symbol: str
     name: str
@@ -260,6 +286,7 @@ log = logging.getLogger(__name__)
 
 DCA_EXAMPLE_MONTHLY = Decimal(1_000_000)
 POSITION_WINDOWS = (60, 120)
+PAYDAY_EXAMPLE_MONTHLY = Decimal(1_000)  # 달러 — 예시 금액
 # 관심 종목 추세 — 주식 신호 규칙(이동평균) 그대로, 신호를 바꾸면 같이 바뀌게
 TREND_RULES = [
     (int(spec.split("-")[1]), build_strategy(spec)[0]) for spec in STOCK_SIGNAL_STRATEGIES
@@ -483,6 +510,39 @@ def create_app(
             else Decimal(0),
             worst_vs_invested=result.worst_vs_invested,
             average_cost=result.spent / result.qty if result.qty else None,
+        )
+
+    @app.get("/payday")
+    def payday(market: str) -> PaydayOut | None:
+        # 미국 주식만 — 토스 수수료(매수 0.1%)로 계산
+        instrument = universe.find(market)
+        if instrument is None or instrument.currency != "USD":
+            return None
+        loaded = load_candles(market)
+        result = compare(loaded, PAYDAY_EXAMPLE_MONTHLY, lambda amount: us_fee(amount, "buy"))
+        if result is None:
+            return None
+        return PaydayOut(
+            as_of=loaded[-1].start,
+            start=result.start,
+            monthly=PAYDAY_EXAMPLE_MONTHLY,
+            windows=result.windows,
+            window_months=WINDOW_MONTHS,
+            rules=[
+                PaydayRuleOut(
+                    rule=name,
+                    invested=r.invested,
+                    final_value=r.final_value,
+                    return_on_invested=r.final_value / r.invested - 1,
+                    worst_vs_invested=r.worst_vs_invested,
+                    buys=r.buys,
+                    cash=r.cash,
+                    beat_plain=result.beat_plain.get(name),
+                    next_spend=result.latest[name].spend,
+                    next_reason=result.latest[name].reason,
+                )
+                for name, r in result.full.items()
+            ],
         )
 
     @app.get("/next-open")

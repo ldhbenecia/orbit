@@ -23,6 +23,7 @@ from orbit.backtest.metrics import Metrics, compute_metrics
 from orbit.backtest.runs import RunSpec, save_run
 from orbit.backtest.validate import check_rules, save_checks, specs_for
 from orbit.brokers.dry_run import DryRunBroker
+from orbit.dca.payday import RuleName, compare
 from orbit.estimate.live import NextOpenView, build_view
 from orbit.fundamentals.edgar import edgar_symbol, fetch_facts, fetch_tickers, has_share_class
 from orbit.fundamentals.snapshot import snapshots
@@ -45,6 +46,7 @@ from orbit.marketdata.sync import sync_daily_candles, sync_stock_daily
 from orbit.marketdata.tiger_holdings import TIGER_BASE_URL, Holding, fetch_holdings
 from orbit.marketdata.toss import BASE_URL as TOSS_BASE_URL
 from orbit.marketdata.toss import TossMarketData
+from orbit.marketdata.toss_rules import us_fee
 from orbit.marketdata.upbit_candles import BASE_URL
 from orbit.marketdata.upbit_ticker import try_fetch_ticker
 from orbit.settings import Settings
@@ -97,6 +99,13 @@ def main() -> None:
     signal = commands.add_parser("signal", help="오늘의 규칙 신호 — 규칙마다 보유·현금·돌파 여부")
     signal.add_argument("--market", default="KRW-BTC")
     signal.add_argument("--db", type=Path, default=DEFAULT_DB)
+
+    payday = commands.add_parser(
+        "payday", help="미국 주식 월급날 규칙 비교 — 단순 적립·떨어지면 더·추세 아래면 대기"
+    )
+    payday.add_argument("--market", required=True, help="예: US-SPY")
+    payday.add_argument("--monthly", type=Decimal, default=Decimal(1000), help="달러, 예시 금액")
+    payday.add_argument("--db", type=Path, default=DEFAULT_DB)
 
     commands.add_parser("openapi", help="API 명세(JSON)를 표준 출력으로 — 웹 타입 생성용")
 
@@ -168,6 +177,8 @@ def main() -> None:
         _compare_strategies(args)
     elif args.command == "signal":
         _signal(args.market, args.db)
+    elif args.command == "payday":
+        _payday(args.market, args.monthly, args.db)
     elif args.command == "openapi":
         json.dump(
             create_app(lambda: sqlite3.connect(DEFAULT_DB)).openapi(),
@@ -479,6 +490,56 @@ def _signal(market: str, db: Path) -> None:
         log.info("  %-8s %-10s [%s]%s", s.strategy, _STANCE_LABEL[s.stance], s.status, extra)
         log.info("           %s", s.reason)
     log.info("\n규칙이 말하는 상태일 뿐 투자 권유가 아님. 실험 중 규칙은 검증 전")
+
+
+_PAYDAY_LABEL: dict[RuleName, str] = {
+    "plain": "단순 적립",
+    "dip": "떨어지면 더",
+    "trend": "추세 아래면 대기",
+}
+
+
+def _payday(market: str, monthly: Decimal, db: Path) -> None:
+    if not market.startswith("US-"):
+        log.error("미국 주식만 — 예: --market US-SPY")
+        return
+    store = CandleStore.open(db)
+    candles = store.load(market)
+    store.close()
+    result = compare(candles, monthly, lambda amount: us_fee(amount, "buy"))
+    if result is None:
+        log.error("일봉이 1년치보다 적음 — 먼저 orbit sync-stocks")
+        return
+    log.info(
+        "%s 월급날(25일) 매달 $%s — %s ~ %s, 수수료 0.1%%\n",
+        market,
+        monthly,
+        f"{result.start:%Y-%m-%d}",
+        f"{candles[-1].start:%Y-%m-%d}",
+    )
+    log.info(
+        "  %-14s %12s %12s %8s %8s  %s", "규칙", "넣은 돈", "평가액", "수익", "최악", "5년 구간"
+    )
+    for name, r in result.full.items():
+        beat = result.beat_plain.get(name)
+        log.info(
+            "  %-14s %12s %12s %8s %8s  %s",
+            _PAYDAY_LABEL[name],
+            f"${r.invested:,.0f}",
+            f"${r.final_value:,.0f}",
+            _pct(r.final_value / r.invested - 1),
+            _pct(r.worst_vs_invested),
+            "기준"
+            if name == "plain"
+            else "구간 부족"
+            if beat is None
+            else f"단순 적립보다 나음 {beat * 100:.0f}%",
+        )
+    log.info("\n5년 구간 %d개 (매달 시작) 중 평가액이 단순 적립보다 컸던 비율", result.windows)
+    log.info("다음 월급날 (%s 종가 기준)", f"{candles[-1].start:%Y-%m-%d}")
+    for name, choice in result.latest.items():
+        log.info("  %-14s %s", _PAYDAY_LABEL[name], choice.reason)
+    log.info("\n과거 데이터에서 이랬다는 것 — 앞으로도 같다는 뜻이 아니고 투자 권유가 아님")
 
 
 def _sync_stocks(db: Path) -> None:
