@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import type { components } from "@/lib/api";
 import { engineJson } from "@/lib/engine";
 import { rankLabel } from "@/components/fundamentals-card";
-import { formatDate, formatPercent1, formatPrice } from "@/lib/format";
+import { formatDate, formatMultiple, formatPercent1, formatPrice } from "@/lib/format";
 import { DEMO, type MarketInfo } from "@/lib/markets";
 import { tone } from "@/lib/summary";
 import { getMarkets } from "@/lib/universe";
@@ -144,7 +144,7 @@ function Per({ row }: { row: Row }) {
   if (f.per === null) return <span className="text-xs text-muted">적자</span>;
   return (
     <span title={`${formatDate(f.period_end)}까지 최근 4분기 · ${formatDate(f.filed)} 공시`}>
-      {Number(f.per).toFixed(1)}
+      {formatMultiple(f.per)}
       {f.per_5y && <span className="block whitespace-nowrap text-[11px] text-muted">{rankLabel(f.per_5y)}</span>}
     </span>
   );

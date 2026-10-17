@@ -83,3 +83,7 @@ export const formatKoreanWon = (value: number) => {
 };
 
 export const formatPercent1 = (ratio: number) => `${ratio > 0 ? "+" : ""}${(ratio * 100).toFixed(1)}%`;
+
+// 재무 비율 — 배수(PER·PBR)와 부호 없는 비율(ROE 등). 값이 없으면 "—"
+export const formatMultiple = (value: string | null) => (value === null ? "—" : `${Number(value).toFixed(1)}배`);
+export const formatRatio = (value: string | null) => (value === null ? "—" : `${(Number(value) * 100).toFixed(1)}%`);

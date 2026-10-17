@@ -1,12 +1,10 @@
 import type { components } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatMultiple, formatPercent1, formatRatio } from "@/lib/format";
 import type { MarketInfo } from "@/lib/markets";
 
 type Fundamentals = components["schemas"]["FundamentalsOut"];
 type Position = components["schemas"]["PositionOut"];
 
-const formatMultiple = (value: string | null) => (value === null ? "—" : `${Number(value).toFixed(1)}배`);
-const formatRatio = (value: string | null) => (value === null ? "—" : `${(Number(value) * 100).toFixed(1)}%`);
 
 // 지난 5년 월말 값 중 지금 위치 — 낮은 쪽이면 "하위", 높은 쪽이면 "상위" 로 (하위 97% 처럼 헷갈리지 않게)
 export const rankLabel = (p: Position) => {
@@ -46,7 +44,7 @@ export function FundamentalsCard({ info, data }: { info: MarketInfo; data: Funda
         />
         <Stat
           label="매출 성장 (1년)"
-          value={data.revenue_growth === null ? "—" : formatSigned(data.revenue_growth)}
+          value={data.revenue_growth === null ? "—" : formatPercent1(Number(data.revenue_growth))}
           hint="최근 4분기 매출 ÷ 1년 전 최근 4분기 매출 − 1"
         />
       </div>
@@ -59,11 +57,6 @@ export function FundamentalsCard({ info, data }: { info: MarketInfo; data: Funda
     </section>
   );
 }
-
-const formatSigned = (value: string) => {
-  const ratio = Number(value);
-  return `${ratio > 0 ? "+" : ""}${(ratio * 100).toFixed(1)}%`;
-};
 
 function Range({ position }: { position: Position }) {
   const pct = Number(position.percentile) * 100;
