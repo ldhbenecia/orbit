@@ -123,6 +123,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/payday": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Payday */
+        get: operations["payday_payday_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/next-open": {
         parameters: {
             query?: never;
@@ -416,6 +433,52 @@ export interface components {
             /** Nav Estimate */
             nav_estimate: string | null;
         };
+        /** PaydayOut */
+        PaydayOut: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /** Monthly */
+            monthly: string;
+            /** Windows */
+            windows: number;
+            /** Window Months */
+            window_months: number;
+            /** Rules */
+            rules: components["schemas"]["PaydayRuleOut"][];
+        };
+        /** PaydayRuleOut */
+        PaydayRuleOut: {
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "plain" | "dip" | "trend";
+            /** Invested */
+            invested: string;
+            /** Final Value */
+            final_value: string;
+            /** Return On Invested */
+            return_on_invested: string;
+            /** Worst Vs Invested */
+            worst_vs_invested: string;
+            /** Buys */
+            buys: number;
+            /** Cash */
+            cash: string;
+            /** Beat Plain */
+            beat_plain: string | null;
+            next_spend: components["schemas"]["Spend"];
+            /** Next Reason */
+            next_reason: string;
+        };
         /** PositionOut */
         PositionOut: {
             /** Low */
@@ -540,6 +603,11 @@ export interface components {
             /** Signals */
             signals: components["schemas"]["SignalOut"][];
         };
+        /**
+         * Spend
+         * @enum {string}
+         */
+        Spend: "all" | "half_salary" | "none";
         /**
          * Stance
          * @enum {string}
@@ -861,6 +929,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DcaOut"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    payday_payday_get: {
+        parameters: {
+            query: {
+                market: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaydayOut"] | null;
                 };
             };
             /** @description Validation Error */

@@ -87,3 +87,7 @@ export const formatPercent1 = (ratio: number) => `${ratio > 0 ? "+" : ""}${(rati
 // 재무 비율 — 배수(PER·PBR)와 부호 없는 비율(ROE 등). 값이 없으면 "—"
 export const formatMultiple = (value: string | null) => (value === null ? "—" : `${Number(value).toFixed(1)}배`);
 export const formatRatio = (value: string | null) => (value === null ? "—" : `${(Number(value) * 100).toFixed(1)}%`);
+
+// 큰 달러 금액은 센트 없이 — 백테스트 평가액 등
+const usdWhole = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+export const formatUsdWhole = (value: number) => usdWhole.format(value);

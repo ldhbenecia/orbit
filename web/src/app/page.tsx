@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { DcaCard } from "@/components/dca-card";
 import { FundamentalsCard } from "@/components/fundamentals-card";
 import { NextOpenCard } from "@/components/next-open-card";
+import { PaydayCard } from "@/components/payday-card";
 import { PriceView } from "@/components/price-view";
 import { RuleCheckCard } from "@/components/rule-check-card";
 import { SignalCard } from "@/components/signal-card";
@@ -20,7 +21,8 @@ export default async function Page(props: PageProps<"/">) {
   await connection();
   const info = findMarket(await getMarkets(), (await props.searchParams).market);
   const market = info.market;
-  const [candles, summary, runs, verdict, nextOpen, checks, wallet, fundamentals] = await Promise.all([
+  const usStock = info.group === "stock" && info.currency === "USD";
+  const [candles, summary, runs, verdict, nextOpen, checks, wallet, fundamentals, payday] = await Promise.all([
     engineJson<CandleOut[]>(`/candles?market=${market}&interval=day&limit=${RECENT_DAILY}`),
     engineJson<components["schemas"]["CandlesSummaryOut"] | null>(`/candles/summary?market=${market}`),
     engineJson<components["schemas"]["RunOut"][]>(`/backtests?market=${market}`),
@@ -33,9 +35,8 @@ export default async function Page(props: PageProps<"/">) {
     // 가상 장부는 지금 코인만
     info.group === "coin" ? engineJson<components["schemas"]["WalletOut"]>("/wallet") : null,
     // 미국 기업 공시 — ETF·해외 공시 기업은 엔진이 비워 보냄
-    info.group === "stock" && info.currency === "USD"
-      ? engineJson<components["schemas"]["FundamentalsOut"] | null>(`/fundamentals?market=${market}`)
-      : null,
+    usStock ? engineJson<components["schemas"]["FundamentalsOut"] | null>(`/fundamentals?market=${market}`) : null,
+    usStock ? engineJson<components["schemas"]["PaydayOut"] | null>(`/payday?market=${market}`) : null,
   ]);
   const slots = wallet?.slots.filter((s) => s.market === market) ?? [];
 
@@ -63,6 +64,7 @@ export default async function Page(props: PageProps<"/">) {
           firstDay={(summary?.first ?? candles[0].start).slice(0, 10)}
         />
         {checks && <RuleCheckCard info={info} data={checks} />}
+        {payday && <PaydayCard info={info} data={payday} />}
       </div>
     </div>
   );
