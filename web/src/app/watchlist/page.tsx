@@ -3,6 +3,7 @@ import { connection } from "next/server";
 
 import type { components } from "@/lib/api";
 import { engineJson } from "@/lib/engine";
+import { rankLabel } from "@/components/fundamentals-card";
 import { formatDate, formatPercent1, formatPrice } from "@/lib/format";
 import { DEMO, type MarketInfo } from "@/lib/markets";
 import { tone } from "@/lib/summary";
@@ -51,11 +52,14 @@ export default async function WatchlistPage() {
             <table className="w-full table-fixed text-sm tabular-nums">
               <thead>
                 <tr className="text-xs text-muted">
-                  <th className="w-[40%] px-4 py-2 text-left font-normal sm:w-[36%]">종목</th>
-                  <th className="w-[26%] px-2 py-2 text-right font-normal sm:w-[22%]">가격 · 하루</th>
-                  <th className="hidden w-[12%] px-2 py-2 text-right font-normal sm:table-cell">1년</th>
-                  <th className="w-[16%] px-2 py-2 text-right font-normal sm:w-[14%]">고점 대비</th>
-                  <th className="w-[18%] px-4 py-2 text-right font-normal sm:w-[16%]">추세</th>
+                  <th className="w-[30%] px-4 py-2 text-left font-normal">종목</th>
+                  <th className="w-[24%] px-2 py-2 text-right font-normal sm:w-[20%]">가격 · 하루</th>
+                  <th className="hidden w-[10%] px-2 py-2 text-right font-normal sm:table-cell">1년</th>
+                  <th className="w-[14%] px-2 py-2 text-right font-normal sm:w-[12%]">고점 대비</th>
+                  <th className="w-[14%] px-2 py-2 text-right font-normal sm:w-[13%]" title="아래 줄은 지난 5년 월말 PER 중 지금 위치">
+                    PER
+                  </th>
+                  <th className="w-[18%] px-4 py-2 text-right font-normal sm:w-[15%]">추세</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -71,7 +75,8 @@ export default async function WatchlistPage() {
       ))}
       <p className="text-xs leading-relaxed text-muted">
         고점 대비는 최근 52주(1년) 최고 종가에서 얼마나 내려와 있는지예요. 많이 내려왔다고 싼 건 아니에요 — 이익이 같이 줄었을 수
-        있어요. 추세 점은 왼쪽부터 60·120·200거래일 평균 위(빨강)·아래(파랑)예요.
+        있어요. PER 은 시가총액 ÷ 최근 4분기 순이익(SEC 공시)이고, 아래 줄은 지난 5년 월말 PER 중 지금 위치예요 —
+        ETF·해외 공시 기업은 없어요. 추세 점은 왼쪽부터 60·120·200거래일 평균 위(빨강)·아래(파랑)예요.
       </p>
     </div>
   );
@@ -97,7 +102,7 @@ function WatchRow({ row, info }: { row: Row; info: MarketInfo | undefined }) {
               {formatPrice(Number(row.close), currency)}
             </span>
             {row.change !== null && (
-              <span className={`ml-1.5 text-xs ${tone(Number(row.change))}`}>{formatPercent1(Number(row.change))}</span>
+              <span className={`block text-xs sm:ml-1.5 sm:inline ${tone(Number(row.change))}`}>{formatPercent1(Number(row.change))}</span>
             )}
           </>
         )}
@@ -107,6 +112,9 @@ function WatchRow({ row, info }: { row: Row; info: MarketInfo | undefined }) {
       </td>
       <td className="px-2 py-2.5 text-right">
         {row.from_high === null ? "—" : Number(row.from_high) > -0.0005 ? "고점" : formatPercent1(Number(row.from_high))}
+      </td>
+      <td className="px-2 py-2.5 text-right">
+        <Per row={row} />
       </td>
       <td className="px-4 py-2.5 text-right">
         {row.trend.length === 0 ? (
@@ -120,12 +128,24 @@ function WatchRow({ row, info }: { row: Row; info: MarketInfo | undefined }) {
                 aria-label={`${t.window}거래일 평균 ${t.above ? "위" : "아래"}`}
               />
             ))}
-            <span className="ml-1 text-xs text-muted">
+            <span className="ml-1 hidden text-xs text-muted sm:inline">
               {above}/{row.trend.length}
             </span>
           </span>
         )}
       </td>
     </tr>
+  );
+}
+
+function Per({ row }: { row: Row }) {
+  const f = row.fundamentals;
+  if (!f) return <span className="text-muted">—</span>;
+  if (f.per === null) return <span className="text-xs text-muted">적자</span>;
+  return (
+    <span title={`${formatDate(f.period_end)}까지 최근 4분기 · ${formatDate(f.filed)} 공시`}>
+      {Number(f.per).toFixed(1)}
+      {f.per_5y && <span className="block whitespace-nowrap text-[11px] text-muted">{rankLabel(f.per_5y)}</span>}
+    </span>
   );
 }
