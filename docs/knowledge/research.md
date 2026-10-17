@@ -33,4 +33,5 @@
 | 연구 | 핵심 | orbit 에서 | 상태 |
 |---|---|---|---|
 | Vanguard (2012), "Dollar-cost averaging just means taking risk later" | 일시 투입이 적립식보다 약 2/3 확률로 나았음. 적립식은 최악의 순간이 덜 아픔 | 적립식 분석에 같은 돈 일시 투입 비교 | 예정 |
+| Maggiulli (2019), "Even God Couldn't Beat Dollar-Cost Averaging", *Of Dollars And Data* (블로그 분석) | 바닥을 미리 알고 모아 둔 돈을 넣어도 대부분의 기간에 단순 적립보다 못했음 — 기다리는 동안 시장이 오름 | 월급날 규칙 비교 ("떨어지면 더" vs 단순 적립, 5년 구간별 비율) | ✅ |
 | Lou·Polk·Skouras (2019), "A Tug of War: Overnight versus Intraday Expected Returns", *Journal of Financial Economics* | 미국 주식 수익의 상당 부분이 밤사이 | 아이디어 보관함(종가 매수 → 시가 매도) — 왕복 비용이 더 큼 | 기록만 |
