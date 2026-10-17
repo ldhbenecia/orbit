@@ -79,7 +79,7 @@ export default async function WatchlistPage() {
 }
 
 function WatchRow({ row, info }: { row: Row; info: MarketInfo | undefined }) {
-  const currency = info?.currency ?? (row.market.startsWith("US-") ? "USD" : "KRW");
+  const currency = row.currency;
   const above = row.trend.filter((t) => t.above).length;
   return (
     <tr className="hover:bg-background/40">

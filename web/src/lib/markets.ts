@@ -12,7 +12,6 @@ export type MarketInfo = {
   core: boolean; // 매달 적립하는 종목 — 보유/현금 신호 대신 적립식 분석
   nextOpen: boolean; // 국내 상장 해외 ETF 다음 개장 추정 대상
   dashboard: boolean; // 맨 위 타일
-  sector: string | null; // 관심 종목 분야
 };
 
 export const GROUPS: readonly { value: MarketGroup; label: string }[] = [
@@ -33,7 +32,6 @@ export const toMarketInfo = (m: components["schemas"]["MarketOut"]): MarketInfo 
   core: m.dca ?? false,
   nextOpen: m.next_open ?? false,
   dashboard: m.dashboard,
-  sector: m.sector ?? null,
 });
 
 // 엔진에 닿지 않을 때 — 정책상 코인은 BTC·ETH 고정
@@ -49,7 +47,6 @@ export const COIN_FALLBACK: readonly MarketInfo[] = [
   core: false,
   nextOpen: false,
   dashboard: true,
-  sector: null,
 }));
 
 export const findMarket = (markets: readonly MarketInfo[], value: string | string[] | undefined): MarketInfo =>

@@ -586,17 +586,25 @@ export interface components {
             market: string;
             /** Sector */
             sector: string;
+            /**
+             * Currency
+             * @enum {string}
+             */
+            currency: "KRW" | "USD";
             /** As Of */
-            as_of: string | null;
+            as_of?: string | null;
             /** Close */
-            close: string | null;
+            close?: string | null;
             /** Change */
-            change: string | null;
+            change?: string | null;
             /** Return 1Y */
-            return_1y: string | null;
+            return_1y?: string | null;
             /** From High */
-            from_high: string | null;
-            /** Trend */
+            from_high?: string | null;
+            /**
+             * Trend
+             * @default []
+             */
             trend: components["schemas"]["TrendOut"][];
         };
     };
