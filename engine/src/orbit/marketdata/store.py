@@ -35,7 +35,17 @@ class CandleStore:
     def close(self) -> None:
         self._conn.close()
 
+    def replace(self, market: str, candles: list[Candle], fetched_at: datetime) -> None:
+        # 다시 받을 수 있는 시세 캐시 — 지우기와 넣기를 한 트랜잭션으로 (중간에 실패하면 그대로)
+        with self._conn:
+            self._conn.execute("DELETE FROM daily_candles WHERE market = ?", (market,))
+            self._insert(candles, fetched_at)
+
     def upsert(self, candles: list[Candle], fetched_at: datetime) -> None:
+        with self._conn:
+            self._insert(candles, fetched_at)
+
+    def _insert(self, candles: list[Candle], fetched_at: datetime) -> None:
         fetched_ts = int(fetched_at.timestamp())
         rows = []
         for c in candles:
@@ -52,17 +62,16 @@ class CandleStore:
                     fetched_ts,
                 )
             )
-        with self._conn:
-            self._conn.executemany(
-                f"""
+        self._conn.executemany(
+            f"""
                 INSERT INTO daily_candles ({_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (market, start_ts) DO UPDATE SET
                     open = excluded.open, high = excluded.high, low = excluded.low,
                     close = excluded.close, volume = excluded.volume,
                     fetched_ts = excluded.fetched_ts
                 """,
-                rows,
-            )
+            rows,
+        )
 
     def load(self, market: str) -> list[Candle]:
         scale = price_scale(market)

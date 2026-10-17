@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/fundamentals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fundamentals View */
+        get: operations["fundamentals_view_fundamentals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/candles": {
         parameters: {
             query?: never;
@@ -265,6 +282,38 @@ export interface components {
             /** Average Cost */
             average_cost: string | null;
         };
+        /** FundamentalsOut */
+        FundamentalsOut: {
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Filed
+             * Format: date
+             */
+            filed: string;
+            /** Per */
+            per: string | null;
+            /** Pbr */
+            pbr: string | null;
+            /** Roe */
+            roe: string | null;
+            /** Fcf Yield */
+            fcf_yield: string | null;
+            /** Revenue Growth */
+            revenue_growth: string | null;
+            /** Loss */
+            loss: boolean;
+            per_5y: components["schemas"]["PositionOut"] | null;
+            pbr_5y: components["schemas"]["PositionOut"] | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -366,6 +415,17 @@ export interface components {
             nav: string | null;
             /** Nav Estimate */
             nav_estimate: string | null;
+        };
+        /** PositionOut */
+        PositionOut: {
+            /** Low */
+            low: string;
+            /** High */
+            high: string;
+            /** Percentile */
+            percentile: string;
+            /** Months */
+            months: number;
         };
         /** PricePositionOut */
         PricePositionOut: {
@@ -606,6 +666,7 @@ export interface components {
              * @default []
              */
             trend: components["schemas"]["TrendOut"][];
+            fundamentals?: components["schemas"]["FundamentalsOut"] | null;
         };
     };
     responses: never;
@@ -652,6 +713,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WatchRowOut"][];
+                };
+            };
+        };
+    };
+    fundamentals_view_fundamentals_get: {
+        parameters: {
+            query: {
+                market: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FundamentalsOut"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

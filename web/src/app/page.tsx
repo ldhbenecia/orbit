@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 
 import { DcaCard } from "@/components/dca-card";
+import { FundamentalsCard } from "@/components/fundamentals-card";
 import { NextOpenCard } from "@/components/next-open-card";
 import { PriceView } from "@/components/price-view";
 import { RuleCheckCard } from "@/components/rule-check-card";
@@ -19,7 +20,7 @@ export default async function Page(props: PageProps<"/">) {
   await connection();
   const info = findMarket(await getMarkets(), (await props.searchParams).market);
   const market = info.market;
-  const [candles, summary, runs, verdict, nextOpen, checks, wallet] = await Promise.all([
+  const [candles, summary, runs, verdict, nextOpen, checks, wallet, fundamentals] = await Promise.all([
     engineJson<CandleOut[]>(`/candles?market=${market}&interval=day&limit=${RECENT_DAILY}`),
     engineJson<components["schemas"]["CandlesSummaryOut"] | null>(`/candles/summary?market=${market}`),
     engineJson<components["schemas"]["RunOut"][]>(`/backtests?market=${market}`),
@@ -31,6 +32,10 @@ export default async function Page(props: PageProps<"/">) {
     info.core ? null : engineJson<components["schemas"]["RuleChecksOut"] | null>(`/rule-checks?market=${market}`),
     // 가상 장부는 지금 코인만
     info.group === "coin" ? engineJson<components["schemas"]["WalletOut"]>("/wallet") : null,
+    // 미국 기업 공시 — ETF·해외 공시 기업은 엔진이 비워 보냄
+    info.group === "stock" && info.currency === "USD"
+      ? engineJson<components["schemas"]["FundamentalsOut"] | null>(`/fundamentals?market=${market}`)
+      : null,
   ]);
   const slots = wallet?.slots.filter((s) => s.market === market) ?? [];
 
@@ -46,6 +51,7 @@ export default async function Page(props: PageProps<"/">) {
         {verdict?.kind === "dca" && <DcaCard info={info} data={verdict.data} />}
         {verdict?.kind === "signals" && <SignalCard info={info} data={verdict.data} />}
         {slots.length > 0 && <WalletCard info={info} slots={slots} />}
+        {fundamentals && <FundamentalsCard info={info} data={fundamentals} />}
       </div>
       <div className="min-w-0 space-y-10 lg:order-1">
         <PriceView

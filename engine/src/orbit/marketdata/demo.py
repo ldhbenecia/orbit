@@ -1,8 +1,9 @@
 import math
 import random
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
+from orbit.fundamentals.snapshot import Snapshot
 from orbit.marketdata.candle import ONE_DAY, Candle
 from orbit.marketdata.instruments import COIN_MARKETS, Universe
 from orbit.marketdata.names import InstrumentName
@@ -55,3 +56,36 @@ def demo_names(universe: Universe) -> list[InstrumentName]:
             InstrumentName(instrument.market, instrument.symbol, name, "DEMO", instrument.currency)
         )
     return names
+
+
+DEMO_SHARES = 1_000_000_000
+
+
+def demo_snapshots(market: str, start: date, end: date) -> list[Snapshot]:
+    # 가상 재무 — 분기마다 순이익이 무작위로 변하고, 분기 끝 40일 뒤 공시된다고 봄
+    rng = random.Random(f"{market}:fundamentals")
+    income = 4e9  # 가상 시세 100달러 × 10억 주 ÷ 이 값 ≈ PER 25
+    out: list[Snapshot] = []
+    quarter = start.year * 4
+    while True:
+        year, q = divmod(quarter, 4)
+        period_end = date(year + (q == 3), (3 * (q + 1)) % 12 + 1, 1) - timedelta(1)
+        filed = period_end + timedelta(40)
+        if filed > end:
+            return out
+        income *= math.exp(rng.gauss(0.02, 0.08))
+        ni = round(income)
+        out.append(
+            Snapshot(
+                filed=filed,
+                period_end=period_end,
+                net_income=ni,
+                revenue=ni * 5,
+                revenue_prev=round(ni * 5 / 1.1),
+                operating_cf=round(ni * 1.3),
+                capex=round(ni * 0.3),
+                equity=ni * 6,
+                shares=DEMO_SHARES,
+            )
+        )
+        quarter += 1

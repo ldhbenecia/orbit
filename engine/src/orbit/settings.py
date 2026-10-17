@@ -12,3 +12,5 @@ class Settings(BaseSettings):
 
     toss_client_id: SecretStr | None = None
     toss_client_secret: SecretStr | None = None
+    # SEC 공시 API 는 요청마다 연락처를 요구함 ("이름 이메일") — 개인정보라 출력에 안 보이게
+    sec_user_agent: SecretStr | None = None

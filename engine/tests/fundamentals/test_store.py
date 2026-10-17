@@ -1,0 +1,46 @@
+import sqlite3
+from datetime import UTC, date, datetime, timedelta
+
+from orbit.fundamentals.snapshot import Snapshot
+from orbit.fundamentals.store import fetched_since, load_snapshots, save_snapshots
+
+NOW = datetime(2026, 10, 17, tzinfo=UTC)
+
+
+def snap(filed: date, shares: int | None) -> Snapshot:
+    return Snapshot(filed, date(2026, 6, 30), 1, 2, 3, 4, 5, -6, shares)
+
+
+def test_종목_단위로_통째로_바꿈() -> None:
+    # 분할이 새로 감지되면 옛 보고서 주식 수도 바뀜 — 예전 줄이 남으면 안 됨
+    conn = sqlite3.connect(":memory:")
+    save_snapshots(conn, "US-EXA", [snap(date(2026, 5, 5), 100), snap(date(2026, 8, 5), 110)], NOW)
+    save_snapshots(conn, "US-EXB", [snap(date(2026, 8, 5), 7)], NOW)
+
+    save_snapshots(
+        conn, "US-EXA", [snap(date(2026, 8, 5), 1_100), snap(date(2026, 11, 5), None)], NOW
+    )
+
+    assert load_snapshots(conn, "US-EXA") == [
+        snap(date(2026, 8, 5), 1_100),
+        snap(date(2026, 11, 5), None),
+    ]
+    assert load_snapshots(conn, "US-EXB") == [snap(date(2026, 8, 5), 7)]
+
+
+def test_기준_시각_이후에_받은_종목만_새것으로_봄() -> None:
+    conn = sqlite3.connect(":memory:")
+    save_snapshots(conn, "US-OLD", [snap(date(2026, 8, 5), 1)], NOW - timedelta(days=2))
+    save_snapshots(conn, "US-NEW", [snap(date(2026, 8, 5), 1)], NOW - timedelta(hours=1))
+    save_snapshots(conn, "US-EDGE", [snap(date(2026, 8, 5), 1)], NOW - timedelta(days=1))
+
+    assert fetched_since(conn, NOW - timedelta(days=1)) == {"US-NEW", "US-EDGE"}
+
+
+def test_재무가_없는_종목도_받은_것으로_기록() -> None:
+    # ETF·해외 공시 기업 — 저장할 보고서는 없어도 하루 안에 다시 받지 않게
+    conn = sqlite3.connect(":memory:")
+    save_snapshots(conn, "US-ETF", [], NOW)
+
+    assert fetched_since(conn, NOW - timedelta(hours=1)) == {"US-ETF"}
+    assert load_snapshots(conn, "US-ETF") == []

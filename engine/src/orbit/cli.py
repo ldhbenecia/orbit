@@ -24,9 +24,12 @@ from orbit.backtest.runs import RunSpec, save_run
 from orbit.backtest.validate import check_rules, save_checks, specs_for
 from orbit.brokers.dry_run import DryRunBroker
 from orbit.estimate.live import NextOpenView, build_view
+from orbit.fundamentals.edgar import edgar_symbol, fetch_facts, fetch_tickers, has_share_class
+from orbit.fundamentals.snapshot import snapshots
+from orbit.fundamentals.store import fetched_since, save_snapshots
 from orbit.ledger.book import Ledger
 from orbit.marketdata.candle import Candle
-from orbit.marketdata.demo import demo_candles, demo_names
+from orbit.marketdata.demo import demo_candles, demo_names, demo_snapshots
 from orbit.marketdata.fund_nav import Nav, fetch_ace_nav, fetch_tiger_nav
 from orbit.marketdata.instruments import (
     COIN_MARKETS,
@@ -71,6 +74,11 @@ def main() -> None:
         "sync-stocks", help="토스증권에서 등록한 주식·ETF 일봉을 받아 저장"
     )
     stocks.add_argument("--db", type=Path, default=DEFAULT_DB)
+
+    fundamentals = commands.add_parser(
+        "sync-fundamentals", help="SEC 공시에서 등록한 미국 종목의 재무를 받아 저장"
+    )
+    fundamentals.add_argument("--db", type=Path, default=DEFAULT_DB)
 
     serve = commands.add_parser("serve", help="대시보드용 조회 API 실행 (이 기기에서만 접속)")
     serve.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -130,6 +138,8 @@ def main() -> None:
         _sync_candles(args.market, args.db)
     elif args.command == "sync-stocks":
         _sync_stocks(args.db)
+    elif args.command == "sync-fundamentals":
+        _sync_fundamentals(args.db)
     elif args.command == "serve":
         db = args.db
         # 가상 데이터 화면은 예시 종목 목록으로 — 내 목록이 캡처에 섞이지 않게
@@ -336,6 +346,10 @@ def _demo_data(db: Path) -> None:
     conn = sqlite3.connect(db)
     try:
         save_names(conn, demo_names(universe), datetime.now(UTC))
+        for instrument in universe.instruments:
+            if instrument.currency == "USD":
+                snaps = demo_snapshots(instrument.market, date(2016, 1, 1), end.date())
+                save_snapshots(conn, instrument.market, snaps, datetime.now(UTC))
     finally:
         conn.close()
     _validate(validated_markets(universe), db)
@@ -501,6 +515,10 @@ def _sync_stocks(db: Path) -> None:
                 continue
             result = sync_stock_daily(api, store, instrument, now=datetime.now(UTC))
             period = f"{result.first:%Y-%m-%d} ~ {result.last:%Y-%m-%d}" if result.first else "없음"
+            if result.replaced:
+                log.info(
+                    "%s 수정주가가 바뀜 (액면분할 등) — 전 기간을 다시 받음", instrument.market
+                )
             log.info(
                 "%s %s 일봉 %d개 저장 (진행 중 %d개 제외), 누적 %d개 %s",
                 instrument.market,
@@ -511,6 +529,60 @@ def _sync_stocks(db: Path) -> None:
                 period,
             )
     store.close()
+
+
+SEC_INTERVAL = 0.15  # SEC 는 초당 10회 이하만 허용
+# 분기 공시라 하루 안에 다시 받을 일이 거의 없음 — 대시보드를 열 때마다 수십 MB 를 받지 않게
+FUNDAMENTALS_FRESH = timedelta(days=1)
+
+
+def _sync_fundamentals(db: Path) -> None:
+    settings = Settings()
+    if settings.sec_user_agent is None:
+        log.error(".env 에 SEC_USER_AGENT 가 없음 — SEC 는 연락처(이름 이메일)를 요구함")
+        return
+    headers = {"User-Agent": settings.sec_user_agent.get_secret_value()}
+    conn = sqlite3.connect(db)
+    try:
+        fresh = fetched_since(conn, datetime.now(UTC) - FUNDAMENTALS_FRESH)
+        stocks = [
+            i for i in load_universe().instruments if i.currency == "USD" and i.market not in fresh
+        ]
+        if not stocks:
+            log.info("재무는 하루 안에 받은 것 그대로")
+            return
+        with httpx.Client(headers=headers, timeout=30) as client:
+            ciks = fetch_tickers(client)
+            for instrument in stocks:
+                cik = ciks.get(edgar_symbol(instrument.symbol))
+                if cik is None:
+                    log.info("%s 재무 없음 (SEC 공시 회사 아님 — ETF 등)", instrument.market)
+                    save_snapshots(conn, instrument.market, [], datetime.now(UTC))
+                    continue
+                time.sleep(SEC_INTERVAL)
+                try:
+                    # 주식 종류가 붙은 상장주는 회사 전체 가중평균 주식 수와 가격을 곱하지 않음
+                    snaps = snapshots(
+                        fetch_facts(client, cik),
+                        weighted_fallback=not has_share_class(instrument.symbol),
+                    )
+                except httpx.HTTPError as error:
+                    # 한 회사가 실패해도 나머지는 받음 — 시세와 무관한 참고 정보
+                    log.warning("%s 재무 받기 실패 (%s)", instrument.market, type(error).__name__)
+                    continue
+                save_snapshots(conn, instrument.market, snaps, datetime.now(UTC))
+                if snaps:
+                    log.info(
+                        "%s 보고서 %d개, 최근 %s 공시 (%s 기준)",
+                        instrument.market,
+                        len(snaps),
+                        snaps[-1].filed,
+                        snaps[-1].period_end,
+                    )
+                else:
+                    log.info("%s 재무 없음 (미국 기업 연간·분기 보고서 없음)", instrument.market)
+    finally:
+        conn.close()
 
 
 def _toss_api() -> TossMarketData | None:

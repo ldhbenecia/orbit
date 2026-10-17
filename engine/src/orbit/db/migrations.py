@@ -126,6 +126,31 @@ MIGRATIONS: list[str] = [
     """
     DELETE FROM daily_candles WHERE market LIKE 'US-%';
     """,
+    # 8: 미국 기업 재무 (SEC 공시) — 보고서마다 그 공시일에 알던 값. 다시 받을 수 있는 캐시
+    """
+    CREATE TABLE fundamentals (
+        market TEXT NOT NULL,
+        filed_ts INTEGER NOT NULL,          -- 공시일 00:00 UTC, epoch 초
+        period_end_ts INTEGER NOT NULL,     -- 보고서의 분기·연도 끝
+        -- 달러 정수, 기간 값은 최근 4분기 합. 공시에 없으면 NULL
+        net_income INTEGER,
+        revenue INTEGER,
+        revenue_prev INTEGER,               -- 1년 전 시점의 최근 4분기 매출
+        operating_cf INTEGER,
+        capex INTEGER,
+        equity INTEGER,
+        shares INTEGER,                     -- 액면분할 반영 발행주식 수, 교차 확인 실패면 NULL
+        fetched_ts INTEGER NOT NULL,
+        PRIMARY KEY (market, filed_ts)
+    ) STRICT, WITHOUT ROWID;
+    """,
+    # 9: 재무를 받은 시각 — 보고서가 없는 종목(ETF 등)도 남겨 하루 안에 다시 받지 않게
+    """
+    CREATE TABLE fundamentals_fetched (
+        market TEXT PRIMARY KEY,
+        fetched_ts INTEGER NOT NULL         -- epoch 초 (UTC)
+    ) STRICT, WITHOUT ROWID;
+    """,
 ]
 
 
