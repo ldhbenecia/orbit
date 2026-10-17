@@ -438,6 +438,47 @@ def test_월급날_규칙은_미국_주식만_계산하고_엔진_비교와_같�
     assert client.get("/payday", params={"market": "KRW-BTC"}).json() is None
 
 
+def test_추세_템플릿은_관심_종목과_종목_화면이_같고_상대강도는_등록_종목끼리(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "orbit.sqlite"
+    store = CandleStore.open(db)
+    # 기울기만 다른 5종목 — 1년 수익률 순서 A < B < C < D < E
+    slopes = dict(zip("ABCDE", (1, 2, 3, 4, 5), strict=True))
+    for name, k in slopes.items():
+        store.upsert(_stock(f"US-{name}", [100 + k * i for i in range(300)]), fetched_at=D)
+    # 비교에서 빠져야 하는 것: 국내 종목(원화·다른 거래일), 일봉이 끊긴 미국 종목
+    store.upsert(_stock("KRX-100000", [100 + 9 * i for i in range(300)]), fetched_at=D)
+    store.upsert(_stock("US-OLD", [100 + 9 * i for i in range(280)]), fetched_at=D)
+    store.close()
+    universe = Universe(
+        (
+            *(Instrument(f"US-{n}", n, NEW_YORK, sector="테크") for n in slopes),
+            Instrument("KRX-100000", "100000", SEOUL, sector="국내"),
+            Instrument("US-OLD", "OLD", NEW_YORK, dashboard=True),
+        ),
+        ("테크", "국내"),
+    )
+    client = TestClient(create_app(lambda: sqlite3.connect(db), universe=universe))
+
+    rows = {
+        r["market"]: r["template"]
+        for r in client.get("/watchlist").json()
+        if r["market"].startswith("US-")
+    }
+    page = client.get("/trend-template", params={"market": "US-E"}).json()
+
+    assert rows["US-E"] == page
+    strong = {
+        m: next(c["passed"] for c in t["checks"] if c["check"] == "strong") for m, t in rows.items()
+    }
+    # 나보다 낮은 종목 비율 0, ¼, ½, ¾, 1 — 0.7 이상은 D·E
+    assert strong == {"US-A": False, "US-B": False, "US-C": False, "US-D": True, "US-E": True}
+    assert (page["passed"], page["known"], page["peers"]) == (8, 8, 5)
+    for other in ("KRW-BTC", "KRX-100000"):
+        assert client.get("/trend-template", params={"market": other}).json() is None
+
+
 def test_규칙_검증은_기록이_없으면_비움(tmp_path: Path) -> None:
     db = tmp_path / "orbit.sqlite"
     client = TestClient(create_app(lambda: sqlite3.connect(db)))

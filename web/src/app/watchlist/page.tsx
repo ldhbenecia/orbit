@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import type { components } from "@/lib/api";
 import { engineJson } from "@/lib/engine";
 import { rankLabel } from "@/components/fundamentals-card";
+import { CHECK_LABEL, checkState } from "@/components/trend-template-card";
 import { formatDate, formatMultiple, formatPercent1, formatPrice } from "@/lib/format";
 import { DEMO, type MarketInfo } from "@/lib/markets";
 import { tone } from "@/lib/summary";
@@ -76,7 +77,7 @@ export default async function WatchlistPage() {
       <p className="text-xs leading-relaxed text-muted">
         고점 대비는 최근 52주(1년) 최고 종가에서 얼마나 내려와 있는지예요. 많이 내려왔다고 싼 건 아니에요 — 이익이 같이 줄었을 수
         있어요. PER 은 시가총액 ÷ 최근 4분기 순이익(SEC 공시)이고, 아래 줄은 지난 5년 월말 PER 중 지금 위치예요 —
-        ETF·해외 공시 기업은 없어요. 추세 점은 왼쪽부터 60·120·200거래일 평균 위(빨강)·아래(파랑)예요.
+        ETF·해외 공시 기업은 없어요. 추세 점은 왼쪽부터 60·120·200거래일 평균 위(빨강)·아래(파랑)예요. 아래 줄 템플릿 N/8 은 마크 미너비니의 상승 추세 조건 8개 중 몇 개를 갖췄는지예요 (마우스를 올리면 조건별, 종목 화면에서 자세히).
       </p>
     </div>
   );
@@ -131,6 +132,16 @@ function WatchRow({ row, info }: { row: Row; info: MarketInfo | undefined }) {
             <span className="ml-1 hidden text-xs text-muted sm:inline">
               {above}/{row.trend.length}
             </span>
+          </span>
+        )}
+        {row.template && (
+          <span
+            className="block whitespace-nowrap text-[11px] text-muted"
+            title={row.template.checks
+              .map((c) => `${CHECK_LABEL[c.check]}: ${checkState(c.passed)}`)
+              .join("\n")}
+          >
+            템플릿 {row.template.passed}/{row.template.known}
           </span>
         )}
       </td>

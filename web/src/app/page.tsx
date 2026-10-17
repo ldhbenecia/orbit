@@ -7,6 +7,7 @@ import { PaydayCard } from "@/components/payday-card";
 import { PriceView } from "@/components/price-view";
 import { RuleCheckCard } from "@/components/rule-check-card";
 import { SignalCard } from "@/components/signal-card";
+import { TrendTemplateCard } from "@/components/trend-template-card";
 import { WalletCard } from "@/components/wallet-card";
 import type { components } from "@/lib/api";
 import { type CandleOut, toChartCandle } from "@/lib/candles";
@@ -22,7 +23,7 @@ export default async function Page(props: PageProps<"/">) {
   const info = findMarket(await getMarkets(), (await props.searchParams).market);
   const market = info.market;
   const usStock = info.group === "stock" && info.currency === "USD";
-  const [candles, summary, runs, verdict, nextOpen, checks, wallet, fundamentals, payday] = await Promise.all([
+  const [candles, summary, runs, verdict, nextOpen, checks, wallet, fundamentals, payday, template] = await Promise.all([
     engineJson<CandleOut[]>(`/candles?market=${market}&interval=day&limit=${RECENT_DAILY}`),
     engineJson<components["schemas"]["CandlesSummaryOut"] | null>(`/candles/summary?market=${market}`),
     engineJson<components["schemas"]["RunOut"][]>(`/backtests?market=${market}`),
@@ -37,6 +38,7 @@ export default async function Page(props: PageProps<"/">) {
     // 미국 기업 공시 — ETF·해외 공시 기업은 엔진이 비워 보냄
     usStock ? engineJson<components["schemas"]["FundamentalsOut"] | null>(`/fundamentals?market=${market}`) : null,
     usStock ? engineJson<components["schemas"]["PaydayOut"] | null>(`/payday?market=${market}`) : null,
+    usStock ? engineJson<components["schemas"]["TrendTemplateOut"] | null>(`/trend-template?market=${market}`) : null,
   ]);
   const slots = wallet?.slots.filter((s) => s.market === market) ?? [];
 
@@ -51,6 +53,7 @@ export default async function Page(props: PageProps<"/">) {
         {nextOpen && <NextOpenCard info={info} data={nextOpen} />}
         {verdict?.kind === "dca" && <DcaCard info={info} data={verdict.data} />}
         {verdict?.kind === "signals" && <SignalCard info={info} data={verdict.data} />}
+        {template && <TrendTemplateCard info={info} data={template} />}
         {slots.length > 0 && <WalletCard info={info} slots={slots} />}
         {fundamentals && <FundamentalsCard info={info} data={fundamentals} />}
       </div>

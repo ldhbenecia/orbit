@@ -28,6 +28,14 @@ from orbit.marketdata.store import CandleStore
 from orbit.marketdata.toss_rules import us_fee
 from orbit.marketdata.upbit_ticker import Ticker
 from orbit.signals.today import STOCK_SIGNAL_STRATEGIES, Stance, is_upbit_market, today_signals
+from orbit.signals.trend_template import (
+    RS_MIN_PEERS,
+    YEAR_BARS,
+    Check,
+    strength_ranks,
+    trend_template,
+    year_return,
+)
 from orbit.strategies.registry import build_strategy
 
 
@@ -91,6 +99,21 @@ def _fundamentals_out(f: Fundamentals) -> FundamentalsOut:
     )
 
 
+class TemplateCheckOut(BaseModel):
+    check: Check
+    passed: bool | None  # 상대강도는 비교 종목이 적으면 모름
+
+
+class TrendTemplateOut(BaseModel):
+    # 미너비니 추세 템플릿 — 사라는 신호가 아니라 지금 상승 추세 조건을 몇 개 갖췄는지
+    as_of: datetime  # 마지막 확정 봉
+    passed: int
+    known: int  # 판단한 조건 수 (상대강도를 모르면 7)
+    checks: list[TemplateCheckOut]
+    peers: int  # 상대강도 비교 종목 수 (등록한 미국 종목 중 1년치 일봉이 있는 것)
+    peers_min: int  # 이보다 적으면 상대강도는 모름
+
+
 class WatchRowOut(BaseModel):
     market: str
     sector: str
@@ -102,6 +125,7 @@ class WatchRowOut(BaseModel):
     from_high: Decimal | None = None  # 최근 52주 최고 종가 대비 (0 이하)
     trend: list[TrendOut] = []
     fundamentals: FundamentalsOut | None = None  # 미국 기업만 — ETF·해외 공시 기업은 없음
+    template: TrendTemplateOut | None = None  # 1년치 일봉이 없으면 없음
 
 
 class CandleOut(BaseModel):
@@ -291,7 +315,6 @@ PAYDAY_EXAMPLE_MONTHLY = Decimal(1_000)  # 달러 — 예시 금액
 TREND_RULES = [
     (int(spec.split("-")[1]), build_strategy(spec)[0]) for spec in STOCK_SIGNAL_STRATEGIES
 ]
-YEAR_BARS = 252  # 주식 1년 거래일
 
 
 def _weekday_only(day: date) -> date:
@@ -343,6 +366,36 @@ def create_app(
         found = fundamentals(snaps, candles)
         return _fundamentals_out(found) if found else None
 
+    def stock_returns() -> dict[str, Decimal]:
+        # 상대강도 비교 대상 — 등록한 미국 종목(ETF 포함) 중 1년치 일봉이 있고 마지막 거래일이 같음
+        # 국내 종목은 원화 수익(환율 포함)·다른 거래일이라, 일봉이 끊긴 종목은 다른 1년이라 뺌
+        loaded = {
+            i.market: load_candles(i.market) for i in universe.instruments if i.currency == "USD"
+        }
+        dated = {m: c for m, c in loaded.items() if len(c) > YEAR_BARS}
+        latest = max((c[-1].start for c in dated.values()), default=None)
+        return {
+            m: r
+            for m, c in dated.items()
+            if c[-1].start == latest and (r := year_return(c)) is not None
+        }
+
+    def template_out(
+        candles: list[Candle], strength: Decimal | None, peers: int
+    ) -> TrendTemplateOut | None:
+        result = trend_template(candles, strength)
+        if result is None:
+            return None
+        known = [v for v in result.values() if v is not None]
+        return TrendTemplateOut(
+            as_of=candles[-1].start,
+            passed=sum(known),
+            known=len(known),
+            checks=[TemplateCheckOut(check=c, passed=v) for c, v in result.items()],
+            peers=peers,
+            peers_min=RS_MIN_PEERS,
+        )
+
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         # 서버가 요청을 받기 시작한 뒤 백그라운드에서 — 첫 요청이 전 기간 일봉 변환을 기다리지 않게
@@ -391,6 +444,8 @@ def create_app(
     def watchlist() -> list[WatchRowOut]:
         # 관심 종목 — 사라·말라가 아니라 사실(가격 위치·추세)만
         rows = []
+        returns = stock_returns()
+        ranks = strength_ranks(returns)
         for instrument in universe.watchlist():
             assert instrument.sector is not None  # watchlist() 는 분야가 있는 종목만
             row = WatchRowOut(
@@ -402,8 +457,7 @@ def create_app(
                 row.as_of = candles[-1].start.date()
                 row.close = last
                 row.change = last / candles[-2].close - 1
-                if len(candles) > YEAR_BARS:
-                    row.return_1y = last / candles[-YEAR_BARS - 1].close - 1
+                row.return_1y = year_return(candles)
                 row.from_high = last / max(c.close for c in candles[-YEAR_BARS:]) - 1
                 # 대시보드 신호와 같은 규칙 — 일봉이 모자란 기간은 뺌
                 for window, strategy in TREND_RULES:
@@ -411,8 +465,20 @@ def create_app(
                     if decision.enough_data:
                         row.trend.append(TrendOut(window=window, above=decision.target_weight > 0))
             row.fundamentals = load_fundamentals(instrument.market, candles)
+            if instrument.currency == "USD":
+                row.template = template_out(candles, ranks.get(instrument.market), len(returns))
             rows.append(row)
         return rows
+
+    @app.get("/trend-template")
+    def trend_template_view(market: str) -> TrendTemplateOut | None:
+        # 미국 종목만 — 상대강도를 다른 미국 종목과 비교 (코인·국내 종목 제외)
+        instrument = universe.find(market)
+        if instrument is None or instrument.currency != "USD":
+            return None
+        returns = stock_returns()
+        ranks = strength_ranks(returns)
+        return template_out(load_candles(market), ranks.get(market), len(returns))
 
     @app.get("/fundamentals")
     def fundamentals_view(market: str) -> FundamentalsOut | None:
