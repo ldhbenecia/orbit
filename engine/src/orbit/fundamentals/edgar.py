@@ -52,8 +52,13 @@ class Fact:
 Facts = dict[str, list[Fact]]  # CONCEPTS 의 키 + "cover_shares"
 
 
+def has_share_class(symbol: str) -> bool:
+    # 주식 종류가 붙은 상장주 (EXA.B) — 종류마다 1주의 가치가 다를 수 있음
+    return "." in symbol
+
+
 def edgar_symbol(symbol: str) -> str:
-    # SEC 는 주식 종류를 하이픈으로 (BRK.B → BRK-B)
+    # SEC 는 주식 종류를 하이픈으로 (EXA.B → EXA-B)
     return symbol.replace(".", "-")
 
 

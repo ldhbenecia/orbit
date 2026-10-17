@@ -91,7 +91,7 @@ def _company(cover: dict[str, list[int]], weighted: dict[str, int]) -> Facts:
 
 
 def test_보고서마다_그_공시일에_알던_값으로_하나씩() -> None:
-    snaps = snapshots(_company({}, {}))
+    snaps = snapshots(_company({}, {}), weighted_fallback=False)
 
     # 기간 끝은 비교용 작년 값이 아니라 그 보고서의 기간
     assert [(s.filed, s.period_end, s.net_income) for s in snaps] == [
@@ -114,7 +114,7 @@ def test_보고서마다_그_공시일에_알던_값으로_하나씩() -> None:
 def test_주식수는_가중평균과_교차_확인될_때만(
     cover: list[int], weighted: int, expected: int | None
 ) -> None:
-    snaps = snapshots(_company({"q2": cover}, {"q2": weighted}))
+    snaps = snapshots(_company({"q2": cover}, {"q2": weighted}), weighted_fallback=False)
 
     assert snaps[-1].shares == expected
 
@@ -132,7 +132,7 @@ def test_표지가_없으면_허용할_때만_가중평균으로_대신하고_�
 
 
 def test_가중평균이_없으면_주식수를_믿지_않음() -> None:
-    assert snapshots(_company({"q2": [1000]}, {}))[-1].shares is None
+    assert snapshots(_company({"q2": [1000]}, {}), weighted_fallback=False)[-1].shares is None
 
 
 @pytest.mark.parametrize(
@@ -152,7 +152,10 @@ def test_액면분할만_옛_주식수에_반영(older: int, newer: int, factor:
 
 
 def test_표지에_0_으로_적은_보고서는_모름으로_보고_분할_계산에서_뺌() -> None:
-    snaps = snapshots(_company({"k25": [0], "q1": [1000], "q2": [1010]}, {"q1": 1000, "q2": 1000}))
+    snaps = snapshots(
+        _company({"k25": [0], "q1": [1000], "q2": [1010]}, {"q1": 1000, "q2": 1000}),
+        weighted_fallback=False,
+    )
 
     assert [s.shares for s in snaps] == [None, 1000, 1010]
 
@@ -166,14 +169,19 @@ def test_분할은_여러_번이면_곱해서_반영() -> None:
 def test_분할_직후_교차_확인에_실패한_보고서로도_분할을_감지() -> None:
     # 2분기 보고서 표지는 분할 뒤 주식 수인데 가중평균은 분할 전 — 그 보고서는 주식 수 없음
     # 그래도 1분기 주식 수는 분할을 반영해 수정주가와 맞춤
-    snaps = snapshots(_company({"q1": [1000], "q2": [10_000]}, {"q1": 1000, "q2": 1000}))
+    snaps = snapshots(
+        _company({"q1": [1000], "q2": [10_000]}, {"q1": 1000, "q2": 1000}), weighted_fallback=False
+    )
 
     assert [s.shares for s in snaps] == [None, 10_000, None]
 
 
 def test_분할_반영_전후로_시가총액이_같음() -> None:
     # 수정주가 10 × 분할 반영 주식 10000 = 분할 전 가격 100 × 1000
-    snaps = snapshots(_company({"q1": [1000], "q2": [10_000]}, {"q1": 1000, "q2": 10_000}))
+    snaps = snapshots(
+        _company({"q1": [1000], "q2": [10_000]}, {"q1": 1000, "q2": 10_000}),
+        weighted_fallback=False,
+    )
 
     assert [s.shares for s in snaps] == [None, 10_000, 10_000]
     assert snaps[1].shares is not None and 10 * snaps[1].shares == 100 * 1000

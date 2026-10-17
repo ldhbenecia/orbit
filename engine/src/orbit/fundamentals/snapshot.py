@@ -96,12 +96,17 @@ def _close(shares: int, weighted: int) -> bool:
     return low <= Fraction(shares, weighted) <= high
 
 
+def _is_split(ratio: Fraction) -> bool:
+    n = round(ratio)
+    return ratio >= SPLIT_MIN_RATIO and abs(ratio - n) / ratio <= SPLIT_INTEGER_SLACK
+
+
 def _split_ratio(newer: int, older: int) -> Fraction:
     ratio = Fraction(newer, older)
-    for r, to_factor in ((ratio, Fraction), (1 / ratio, lambda n: Fraction(1, n))):
-        n = round(r)
-        if r >= SPLIT_MIN_RATIO and abs(r - n) / r <= SPLIT_INTEGER_SLACK:
-            return to_factor(n)
+    if _is_split(ratio):
+        return Fraction(round(ratio))
+    if _is_split(1 / ratio):
+        return Fraction(1, round(1 / ratio))
     return Fraction(1)
 
 
@@ -119,7 +124,7 @@ def split_factors(cover: list[tuple[date, int]]) -> dict[date, Fraction]:
     return factors
 
 
-def snapshots(facts: Facts, weighted_fallback: bool = False) -> list[Snapshot]:
+def snapshots(facts: Facts, *, weighted_fallback: bool) -> list[Snapshot]:
     # 보고서 하나 = 그 공시일에 시장이 알던 재무 상태 하나 (뒤에 나온 정정값을 섞지 않음)
     # weighted_fallback: 표지 주식 수가 없을 때 회사 전체 가중평균으로 대신 — 주식 종류마다
     # 1주의 가치가 같을 때만 맞음 (예: 표지를 종류별로만 적는 회사)
@@ -146,7 +151,7 @@ def snapshots(facts: Facts, weighted_fallback: bool = False) -> list[Snapshot]:
     factors = split_factors([(filed, shares) for filed, (shares, _) in shares_by.items()])
     out = []
     for filed, (_, end) in sorted(reports.items()):
-        shares, usable = shares_by.get(filed, (0, False))
+        found = shares_by.get(filed)
         out.append(
             Snapshot(
                 filed=filed,
@@ -157,7 +162,7 @@ def snapshots(facts: Facts, weighted_fallback: bool = False) -> list[Snapshot]:
                 operating_cf=ttm(facts.get("operating_cf", []), end, filed),
                 capex=ttm(facts.get("capex", []), end, filed),
                 equity=instant(facts.get("equity", []), end, filed),
-                shares=round(shares * factors[filed]) if usable else None,
+                shares=round(found[0] * factors[filed]) if found and found[1] else None,
             )
         )
     return out

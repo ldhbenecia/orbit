@@ -36,7 +36,8 @@ class Fundamentals:
     pbr_5y: Position | None
 
 
-def _ratio(top: int | None, bottom: int | None) -> Decimal | None:
+def _ratio(top: Decimal | int | None, bottom: Decimal | int | None) -> Decimal | None:
+    # 분모가 0 이하면 비율이 뜻이 없음 — 적자 PER, 자본 잠식 PBR·ROE
     if top is None or bottom is None or bottom <= 0:
         return None
     return Decimal(top) / Decimal(bottom)
@@ -49,14 +50,12 @@ def valuation(snap: Snapshot, price: Decimal) -> Valuation:
         if snap.operating_cf is not None and snap.capex is not None
         else None
     )
-    earnings = snap.net_income if snap.net_income is not None and snap.net_income > 0 else None
-    equity = snap.equity if snap.equity is not None and snap.equity > 0 else None
     growth = _ratio(snap.revenue, snap.revenue_prev)
     return Valuation(
-        per=cap / earnings if cap is not None and earnings is not None else None,
-        pbr=cap / equity if cap is not None and equity is not None else None,
-        roe=_ratio(snap.net_income, equity),
-        fcf_yield=Decimal(fcf) / cap if cap is not None and cap > 0 and fcf is not None else None,
+        per=_ratio(cap, snap.net_income),
+        pbr=_ratio(cap, snap.equity),
+        roe=_ratio(snap.net_income, snap.equity),
+        fcf_yield=_ratio(fcf, cap),
         revenue_growth=growth - 1 if growth is not None else None,
     )
 
@@ -100,7 +99,7 @@ def fundamentals(snapshots: list[Snapshot], candles: list[Candle]) -> Fundamenta
     pers: list[Decimal] = []
     pbrs: list[Decimal] = []
     # 지금 달은 빼고 과거 월말끼리 — 지금 값이 비교 대상에 섞이지 않게
-    for c in _month_ends(candles[:-1], since):
+    for c in _month_ends(candles, since):
         if (c.start.year, c.start.month) == (today.year, today.month):
             continue
         snap = _known(snapshots, c.start.date())
