@@ -122,6 +122,10 @@ MIGRATIONS: list[str] = [
         fetched_ts INTEGER NOT NULL     -- 받은 시각, epoch 초 (UTC)
     ) STRICT, WITHOUT ROWID;
     """,
+    # 7: 미국 가격 자릿수 4 → 8 — 다시 받을 수 있는 시세 캐시라 지우고 새 자릿수로 다시 받음
+    """
+    DELETE FROM daily_candles WHERE market LIKE 'US-%';
+    """,
 ]
 
 
