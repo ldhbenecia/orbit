@@ -144,6 +144,13 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (market, filed_ts)
     ) STRICT, WITHOUT ROWID;
     """,
+    # 9: 재무를 받은 시각 — 보고서가 없는 종목(ETF 등)도 남겨 하루 안에 다시 받지 않게
+    """
+    CREATE TABLE fundamentals_fetched (
+        market TEXT PRIMARY KEY,
+        fetched_ts INTEGER NOT NULL         -- epoch 초 (UTC)
+    ) STRICT, WITHOUT ROWID;
+    """,
 ]
 
 

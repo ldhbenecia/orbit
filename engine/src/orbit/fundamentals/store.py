@@ -42,6 +42,11 @@ def save_snapshots(
                 for s in snapshots
             ],
         )
+        conn.execute(
+            "INSERT INTO fundamentals_fetched (market, fetched_ts) VALUES (?, ?)"
+            " ON CONFLICT (market) DO UPDATE SET fetched_ts = excluded.fetched_ts",
+            (market, int(now.timestamp())),
+        )
 
 
 def load_snapshots(conn: sqlite3.Connection, market: str) -> list[Snapshot]:
@@ -57,7 +62,7 @@ def load_snapshots(conn: sqlite3.Connection, market: str) -> list[Snapshot]:
 def fetched_since(conn: sqlite3.Connection, since: datetime) -> set[str]:
     migrate(conn)
     rows = conn.execute(
-        "SELECT market FROM fundamentals GROUP BY market HAVING MAX(fetched_ts) >= ?",
+        "SELECT market FROM fundamentals_fetched WHERE fetched_ts >= ?",
         (int(since.timestamp()),),
     ).fetchall()
     return {row[0] for row in rows}

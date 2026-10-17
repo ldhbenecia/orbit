@@ -553,6 +553,7 @@ def _sync_fundamentals(db: Path) -> None:
                 cik = ciks.get(edgar_symbol(instrument.symbol))
                 if cik is None:
                     log.info("%s 재무 없음 (SEC 공시 회사 아님 — ETF 등)", instrument.market)
+                    save_snapshots(conn, instrument.market, [], datetime.now(UTC))
                     continue
                 time.sleep(SEC_INTERVAL)
                 try:

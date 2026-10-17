@@ -35,3 +35,12 @@ def test_기준_시각_이후에_받은_종목만_새것으로_봄() -> None:
     save_snapshots(conn, "US-EDGE", [snap(date(2026, 8, 5), 1)], NOW - timedelta(days=1))
 
     assert fetched_since(conn, NOW - timedelta(days=1)) == {"US-NEW", "US-EDGE"}
+
+
+def test_재무가_없는_종목도_받은_것으로_기록() -> None:
+    # ETF·해외 공시 기업 — 저장할 보고서는 없어도 하루 안에 다시 받지 않게
+    conn = sqlite3.connect(":memory:")
+    save_snapshots(conn, "US-ETF", [], NOW)
+
+    assert fetched_since(conn, NOW - timedelta(hours=1)) == {"US-ETF"}
+    assert load_snapshots(conn, "US-ETF") == []
