@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import Link from "next/link";
 import { connection } from "next/server";
 
 import { Logo } from "@/components/logo";
@@ -39,6 +40,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 가상 데이터 — 실제 시세 아님
               </span>
             )}
+            <nav className="ml-auto flex gap-4 text-sm">
+              <Link href="/" className="text-muted hover:text-foreground">
+                대시보드
+              </Link>
+              <Link href="/watchlist" className="text-muted hover:text-foreground">
+                관심 종목
+              </Link>
+            </nav>
           </header>
           <MarketSwitcher markets={dashboard} tiles={tiles}>
             {children}

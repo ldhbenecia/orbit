@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/watchlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Watchlist */
+        get: operations["watchlist_watchlist_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/candles": {
         parameters: {
             query?: never;
@@ -487,6 +504,13 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** TrendOut */
+        TrendOut: {
+            /** Window */
+            window: number;
+            /** Above */
+            above: boolean;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -556,6 +580,25 @@ export interface components {
             /** Fills */
             fills: components["schemas"]["WalletFillOut"][];
         };
+        /** WatchRowOut */
+        WatchRowOut: {
+            /** Market */
+            market: string;
+            /** Sector */
+            sector: string;
+            /** As Of */
+            as_of: string | null;
+            /** Close */
+            close: string | null;
+            /** Change */
+            change: string | null;
+            /** Return 1Y */
+            return_1y: string | null;
+            /** From High */
+            from_high: string | null;
+            /** Trend */
+            trend: components["schemas"]["TrendOut"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -581,6 +624,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MarketOut"][];
+                };
+            };
+        };
+    };
+    watchlist_watchlist_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchRowOut"][];
                 };
             };
         };
