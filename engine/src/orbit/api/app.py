@@ -15,6 +15,8 @@ from orbit.backtest.runs import latest_runs, load_trades
 from orbit.backtest.validate import latest_checks
 from orbit.dca.plan import next_payday, run_dca
 from orbit.estimate.live import NextOpenView
+from orbit.fundamentals.metrics import Fundamentals, Position, fundamentals
+from orbit.fundamentals.store import load_snapshots
 from orbit.indicators.moving_average import sma
 from orbit.ledger.book import Ledger
 from orbit.marketdata.aggregate import Interval, aggregate
@@ -43,6 +45,48 @@ class TrendOut(BaseModel):
     above: bool  # 이동평균 규칙이 보유 쪽 — 신호와 같은 규칙 함수
 
 
+class PositionOut(BaseModel):
+    low: Decimal
+    high: Decimal
+    percentile: Decimal  # 과거 월말 값 중 지금 이하인 비율 0~1 — 낮을수록 과거보다 싸게 매겨짐
+    months: int
+
+
+class FundamentalsOut(BaseModel):
+    # SEC 공시 기반 — 사실만, 싸다·비싸다 판단은 내지 않음
+    as_of: date  # 가격 기준일
+    period_end: date  # 재무 기준 (분기·연도 끝)
+    filed: date  # 공시일
+    per: Decimal | None  # 적자면 없음
+    pbr: Decimal | None  # 자본이 0 이하면 없음
+    roe: Decimal | None
+    fcf_yield: Decimal | None
+    revenue_growth: Decimal | None
+    per_5y: PositionOut | None  # 지난 5년 월말 PER 중 지금 위치 — 3년 미만이면 없음
+    pbr_5y: PositionOut | None
+
+
+def _position_out(p: Position | None) -> PositionOut | None:
+    if p is None:
+        return None
+    return PositionOut(low=p.low, high=p.high, percentile=p.percentile, months=p.months)
+
+
+def _fundamentals_out(f: Fundamentals) -> FundamentalsOut:
+    return FundamentalsOut(
+        as_of=f.as_of,
+        period_end=f.period_end,
+        filed=f.filed,
+        per=f.now.per,
+        pbr=f.now.pbr,
+        roe=f.now.roe,
+        fcf_yield=f.now.fcf_yield,
+        revenue_growth=f.now.revenue_growth,
+        per_5y=_position_out(f.per_5y),
+        pbr_5y=_position_out(f.pbr_5y),
+    )
+
+
 class WatchRowOut(BaseModel):
     market: str
     sector: str
@@ -53,6 +97,7 @@ class WatchRowOut(BaseModel):
     return_1y: Decimal | None = None  # 약 1년(252거래일) 전 종가 대비
     from_high: Decimal | None = None  # 최근 52주 최고 종가 대비 (0 이하)
     trend: list[TrendOut] = []
+    fundamentals: FundamentalsOut | None = None  # 미국 기업만 — ETF·해외 공시 기업은 없음
 
 
 class CandleOut(BaseModel):
@@ -260,6 +305,15 @@ def create_app(
         finally:
             conn.close()
 
+    def load_fundamentals(market: str, candles: list[Candle]) -> FundamentalsOut | None:
+        conn = connect()
+        try:
+            snaps = load_snapshots(conn, market)
+        finally:
+            conn.close()
+        found = fundamentals(snaps, candles)
+        return _fundamentals_out(found) if found else None
+
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         # 서버가 요청을 받기 시작한 뒤 백그라운드에서 — 첫 요청이 전 기간 일봉 변환을 기다리지 않게
@@ -327,8 +381,13 @@ def create_app(
                     decision = strategy(candles)
                     if decision.enough_data:
                         row.trend.append(TrendOut(window=window, above=decision.target_weight > 0))
+            row.fundamentals = load_fundamentals(instrument.market, candles)
             rows.append(row)
         return rows
+
+    @app.get("/fundamentals")
+    def fundamentals_view(market: str) -> FundamentalsOut | None:
+        return load_fundamentals(market, load_candles(market))
 
     @app.get("/candles")
     def candles(

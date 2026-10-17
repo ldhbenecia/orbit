@@ -14,6 +14,8 @@ from orbit.api.app import create_app
 from orbit.backtest.engine import DEFAULT_CONFIG, Funding, run_backtest
 from orbit.backtest.metrics import compute_metrics
 from orbit.backtest.runs import RunSpec, save_run
+from orbit.fundamentals.snapshot import Snapshot
+from orbit.fundamentals.store import save_snapshots
 from orbit.marketdata.candle import Candle
 from orbit.marketdata.instruments import NEW_YORK, SEOUL, Instrument, NextOpenSpec, Universe
 from orbit.marketdata.names import InstrumentName, save_names
@@ -372,6 +374,35 @@ def test_관심_종목은_분야_순서대로_고점_대비와_추세를_보여�
     assert all(t["above"] is False for t in bbb["trend"])  # 계속 내린 종목은 모두 평균 아래
     assert ccc["close"] is None and ccc["trend"] == []
     assert {r["currency"] for r in body} == {"USD"}
+
+
+def test_재무는_공시가_있는_종목만_관심_종목과_종목_화면이_같은_값(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    store = CandleStore.open(db)
+    store.upsert(_stock("US-AAA", [200, 240]) + _stock("US-BBB", [50, 60]), fetched_at=D)
+    store.close()
+    conn = sqlite3.connect(db)
+    report = Snapshot(date(2024, 12, 1), date(2024, 9, 30), 2_400, 900, 800, 700, 100, 4_800, 100)
+    save_snapshots(conn, "US-AAA", [report], D)
+    conn.close()
+    universe = Universe(
+        (
+            Instrument("US-AAA", "AAA", NEW_YORK, sector="테크"),
+            Instrument("US-BBB", "BBB", NEW_YORK, sector="테크"),  # ETF 등 — 공시 없음
+        ),
+        ("테크",),
+    )
+    client = TestClient(create_app(lambda: sqlite3.connect(db), universe=universe))
+
+    aaa, bbb = client.get("/watchlist").json()
+    page = client.get("/fundamentals", params={"market": "US-AAA"}).json()
+
+    assert aaa["fundamentals"] == page
+    assert Decimal(page["per"]) == 10  # 마지막 종가 240 × 100주 ÷ 순이익 2400
+    assert Decimal(page["pbr"]) == 5  # 24000 ÷ 자본 4800
+    assert page["per_5y"] is None  # 비교할 과거 달이 없음
+    assert bbb["fundamentals"] is None
+    assert client.get("/fundamentals", params={"market": "US-BBB"}).json() is None
 
 
 def test_규칙_검증은_기록이_없으면_비움(tmp_path: Path) -> None:
