@@ -72,7 +72,9 @@ def today_signals(market: str, candles: Sequence[Candle], ticker: Ticker | None)
 def _streak(strategy: Strategy, candles: Sequence[Candle], weight: Decimal) -> int:
     days = 1
     for end in range(len(candles) - 1, max(len(candles) - STREAK_LIMIT, 1), -1):
-        if strategy(candles[:end]).target_weight != weight:
+        # 판단 못 하던 날(일봉 부족)은 현금 판단이 아님 — 그 전으로 이어 세지 않음
+        decision = strategy(candles[:end])
+        if not decision.enough_data or decision.target_weight != weight:
             break
         days += 1
     return days
