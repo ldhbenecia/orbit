@@ -43,7 +43,9 @@ def test_기간별로_기준가_수익과_낙폭을_따로_셈() -> None:
     down = [(200 - i * 10, 200 - (i + 1) * 10) for i in range(10)]
     history = candles([(100, 100)] * 3 + up + down)
 
-    rows = {(r.strategy, r.period): r for r in check_rules("KRW-BTC", history, ["hold"], warmup=2)}
+    rows = {
+        (r.strategy, r.period): r for r in check_rules("KRW-BTC", history, ["hold"], warmup=2).rows
+    }
 
     assert rows[("hold", "first")].cagr > 0
     assert rows[("hold", "second")].cagr < 0
@@ -54,7 +56,7 @@ def test_기간별로_기준가_수익과_낙폭을_따로_셈() -> None:
 
 def test_가장_최근_검증_묶음만_돌려줌(tmp_path: Path) -> None:
     history = candles([(100, 100)] * 3 + [(100 + i, 101 + i) for i in range(20)])
-    rows = check_rules("KRW-BTC", history, ["hold"], warmup=2)
+    rows = check_rules("KRW-BTC", history, ["hold"], warmup=2).rows
     conn = sqlite3.connect(tmp_path / "orbit.sqlite")
 
     save_checks(conn, "KRW-BTC", rows, datetime(2026, 10, 1, tzinfo=UTC), "old")
@@ -75,7 +77,7 @@ def test_보유_외_규칙은_전체_기간에_보유보다_나은_게_우연이
         + [(130 - i, 129 - i) for i in range(30)]
     )
     history = candles(prices)
-    rows = check_rules("KRW-BTC", history, ["hold", "ma-2", "ma-3"], warmup=3)
+    rows = check_rules("KRW-BTC", history, ["hold", "ma-2", "ma-3"], warmup=3).rows
     by = {(r.strategy, r.period): r for r in rows}
 
     assert by[("hold", "all")].edge_prob is None
@@ -90,3 +92,29 @@ def test_보유_외_규칙은_전체_기간에_보유보다_나은_게_우연이
     loaded = {(r.strategy, r.period): r for r in saved.rows}
     assert loaded[("ma-2", "all")].edge_prob == round(prob, 6)
     assert loaded[("ma-2", "all")].sharpe == round(by[("ma-2", "all")].sharpe, 6)
+
+
+def test_워크포워드는_값이_여럿인_계열만_해마다_고른_값과_같은_기간_보유를_함께_저장(
+    tmp_path: Path,
+) -> None:
+    # 5년 남짓 오르내리는 가격 — 3년 훈련 뒤 시험 2~3번
+    prices = [(100 + (i * 37) % 50, 100 + (i * 41) % 50) for i in range(5 * 365 + 40)]
+    history = candles(prices)
+    specs = ["hold", "ma-2", "ma-3", "mom-2", "mom-3", "vb-0.5"]
+    run = check_rules("KRW-BTC", history, specs, warmup=4)
+    wf = {r.strategy: r for r in run.rows if r.strategy.startswith("wf-")}
+
+    # 변동성 돌파는 값이 하나라 고를 게 없음 — 워크포워드 없음
+    assert set(run.picks) == {"ma", "mom"}
+    assert set(wf) == {"wf-ma", "wf-mom", "wf-hold"}
+    assert all(p.spec in ("ma-2", "ma-3") for p in run.picks["ma"])
+    # 비교 기준(보유)은 규칙과 같은 기간
+    assert (wf["wf-hold"].start, wf["wf-hold"].end) == (wf["wf-ma"].start, wf["wf-ma"].end)
+
+    conn = sqlite3.connect(tmp_path / "orbit.sqlite")
+    save_checks(conn, "KRW-BTC", run.rows, datetime(2026, 10, 1, tzinfo=UTC), "v", run.picks)
+    saved = latest_checks(conn, "KRW-BTC")
+
+    assert saved is not None
+    assert [p.spec for p in saved.picks["ma"]] == [p.spec for p in run.picks["ma"]]
+    assert {r.strategy for r in saved.rows} >= set(wf)
