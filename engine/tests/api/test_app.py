@@ -498,8 +498,13 @@ def test_갭_상승_기록은_최근_순이고_관심_종목엔_한_달_안_것�
     store.close()
     conn = sqlite3.connect(db)
     filed = (start + timedelta(days=115 + 30)).date()  # 최근 갭 30일 뒤 분기 보고서
-    report = Snapshot(filed, date(2025, 3, 31), 1, 2, 3, 4, 5, 6, 7)
-    save_snapshots(conn, "US-AAA", [report], D)
+    # 오래된 갭 40일 전 보고서 — 지난 분기 것이라 그 갭의 실적이 아님
+    before = (start + timedelta(days=60 - 40)).date()
+    reports = [
+        Snapshot(before, date(2024, 12, 31), 1, 2, 3, 4, 5, 6, 7),
+        Snapshot(filed, date(2025, 3, 31), 1, 2, 3, 4, 5, 6, 7),
+    ]
+    save_snapshots(conn, "US-AAA", reports, D)
     conn.close()
     universe = Universe(
         (
@@ -519,7 +524,8 @@ def test_갭_상승_기록은_최근_순이고_관심_종목엔_한_달_안_것�
     ]
     recent, old = page["events"]
     assert Decimal(recent["gap"]) == Decimal(130) / 115 - 1
-    assert recent["filed_near"] == str(filed) and old["filed_near"] is None  # 85일 떨어짐
+    # 실적 보도자료가 먼저, 보고서는 그 뒤 — 갭 뒤 35일 안의 첫 공시만 (앞으로는 3일까지)
+    assert recent["filed_near"] == str(filed) and old["filed_near"] is None
     assert recent["after"] is None and Decimal(old["after"]) == 0  # 115 → 20일 뒤 115
     assert rows == {"US-AAA": recent, "US-BBB": None}
 
