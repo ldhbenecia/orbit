@@ -18,8 +18,9 @@ from orbit.units import from_units, round_to_units
 # 파라미터 민감도 — 좋은 값 하나만이 아니라 주변 값도 비슷해야 우연이 아님
 MA_WINDOWS = (40, 60, 80, 100, 120, 140, 160, 200, 240)
 VB_KS = ("0.3", "0.4", "0.5", "0.6", "0.7")
+# 약 3·6·9·12개월 — 코인은 달력 일, 주식은 거래일
+MOM_LOOKBACKS = {"coin": (91, 182, 273, 365), "stock": (63, 126, 189, 252)}
 PPM = 6
-WARMUP = max(MA_WINDOWS)  # 모든 규칙이 판단할 수 있는 날부터 평가 — 규칙마다 출발점이 다르면 불공정
 
 Period = Literal["all", "first", "second"]
 Span = tuple[datetime, datetime]
@@ -41,14 +42,29 @@ class RuleCheck:
 
 
 def specs_for(market: str) -> list[str]:
+    coin = market.startswith("KRW-")
     specs = ["hold", *(f"ma-{w}" for w in MA_WINDOWS)]
+    specs += [f"mom-{n}" for n in MOM_LOOKBACKS["coin" if coin else "stock"]]
     # 주식 변동성 돌파는 장중 시가·호가 단위가 필요해 아직 제외 (신호와 같음)
-    if market.startswith("KRW-"):
+    if coin:
         specs += [f"vb-{k}" for k in VB_KS]
     return specs
 
 
-def periods(candles: Sequence[Candle], warmup: int = WARMUP) -> tuple[Span, Span, Span]:
+def warmup_for(specs: Sequence[str]) -> int:
+    # 모든 규칙이 판단할 수 있는 날부터 평가 — 규칙마다 출발점이 다르면 불공정
+    # 이동평균 N 은 N 봉, 모멘텀 N 은 N 봉 전 종가가 있어야 함
+    need = [0]
+    for spec in specs:
+        name, _, arg = spec.partition("-")
+        if name == "ma":
+            need.append(int(arg))
+        elif name == "mom":
+            need.append(int(arg) + 1)
+    return max(need)
+
+
+def periods(candles: Sequence[Candle], warmup: int) -> tuple[Span, Span, Span]:
     # 평가 구간을 날짜로 반씩 — 앞에서 고른 규칙이 뒤에서도 통하는지 보려는 것
     days = [c.start for c in candles[warmup + 1 :]]
     middle = days[len(days) // 2]
@@ -60,11 +76,11 @@ def check_rules(
     market: str,
     candles: Sequence[Candle],
     specs: Sequence[str],
-    warmup: int = WARMUP,
+    warmup: int | None = None,
 ) -> list[RuleCheck]:
     # 전 기간을 한 번 돌리고 기준가 기록을 기간별로 자름
     # 뒤 기간만 잘라 돌리면 이동평균이 처음 N일 동안 판단을 못 해 불리해짐
-    whole, first, second = periods(candles, warmup)
+    whole, first, second = periods(candles, warmup_for(specs) if warmup is None else warmup)
     spans: list[tuple[Period, Span]] = [("all", whole), ("first", first), ("second", second)]
     funding = Funding(initial=_initial(market), monthly=Decimal(0))
     per_year = 365 if market.startswith("KRW-") else 252

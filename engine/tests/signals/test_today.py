@@ -80,9 +80,10 @@ def test_기준선은_호가_단위로_올림() -> None:
     assert signal.trigger == Decimal(115_548_000)  # 115,216,000 + 331,500 → 1,000원 호가로 올림
 
 
-def test_주식은_이동평균_규칙만() -> None:
+def test_주식은_돌파형_규칙_없이_이동평균과_모멘텀만() -> None:
+    # 변동성 돌파는 장중 시가·달러 호가 단위가 필요해 주식에선 아직 제외
     history = candles([(10, 10)] * 3 + [(20, 20)])
 
     specs = [s.strategy for s in today_signals("US-QQQ", history, None)]
 
-    assert specs == ["ma-60", "ma-120", "ma-200"]
+    assert specs == ["ma-60", "ma-120", "ma-200", "mom-252"]

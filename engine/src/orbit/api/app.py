@@ -312,8 +312,11 @@ DCA_EXAMPLE_MONTHLY = Decimal(1_000_000)
 POSITION_WINDOWS = (60, 120)
 PAYDAY_EXAMPLE_MONTHLY = Decimal(1_000)  # 달러 — 예시 금액
 # 관심 종목 추세 — 주식 신호 규칙(이동평균) 그대로, 신호를 바꾸면 같이 바뀌게
+# 관심 종목 추세 점은 이동평균 규칙만 (60·120·200일)
 TREND_RULES = [
-    (int(spec.split("-")[1]), build_strategy(spec)[0]) for spec in STOCK_SIGNAL_STRATEGIES
+    (int(spec.split("-")[1]), build_strategy(spec)[0])
+    for spec in STOCK_SIGNAL_STRATEGIES
+    if spec.startswith("ma-")
 ]
 
 
