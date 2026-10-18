@@ -3,7 +3,14 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from orbit.backtest.validate import check_rules, latest_checks, periods, save_checks, specs_for
+from orbit.backtest.validate import (
+    check_rules,
+    latest_checks,
+    periods,
+    save_checks,
+    specs_for,
+    warmup_for,
+)
 from tests.backtest.test_engine import candles
 
 
@@ -11,6 +18,13 @@ def test_코인은_변동성_돌파까지_주식은_이동평균만() -> None:
     assert "vb-0.5" in specs_for("KRW-BTC") and "ma-120" in specs_for("KRW-BTC")
     assert not any(s.startswith("vb") for s in specs_for("US-QQQ"))
     assert specs_for("US-QQQ")[0] == "hold"
+    assert "mom-365" in specs_for("KRW-BTC") and "mom-252" in specs_for("US-QQQ")
+
+
+def test_평가는_모든_규칙이_판단할_수_있는_날부터() -> None:
+    # 이동평균 240 은 240봉, 모멘텀 365 는 365봉 전 종가가 필요 → 366
+    assert warmup_for(["hold", "ma-240", "mom-365", "vb-0.5"]) == 366
+    assert warmup_for(["hold", "ma-240", "mom-63"]) == 240
 
 
 def test_평가는_가장_긴_이동평균을_계산할_수_있는_날부터_두_기간으로_나눔() -> None:

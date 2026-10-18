@@ -10,9 +10,9 @@ from orbit.strategies.base import Strategy
 from orbit.strategies.registry import build_strategy, strategy_status
 
 STREAK_LIMIT = 400  # 며칠째인지 거슬러 세는 최대 일수
-COIN_SIGNAL_STRATEGIES = ("ma-60", "ma-120", "ma-200", "vb-0.5")
+COIN_SIGNAL_STRATEGIES = ("ma-60", "ma-120", "ma-200", "mom-365", "vb-0.5")
 # 주식 변동성 돌파는 장중 시가·달러 호가 단위가 필요해 아직 제외
-STOCK_SIGNAL_STRATEGIES = ("ma-60", "ma-120", "ma-200")
+STOCK_SIGNAL_STRATEGIES = ("ma-60", "ma-120", "ma-200", "mom-252")
 
 
 class Stance(StrEnum):
@@ -72,7 +72,9 @@ def today_signals(market: str, candles: Sequence[Candle], ticker: Ticker | None)
 def _streak(strategy: Strategy, candles: Sequence[Candle], weight: Decimal) -> int:
     days = 1
     for end in range(len(candles) - 1, max(len(candles) - STREAK_LIMIT, 1), -1):
-        if strategy(candles[:end]).target_weight != weight:
+        # 판단 못 하던 날(일봉 부족)은 현금 판단이 아님 — 그 전으로 이어 세지 않음
+        decision = strategy(candles[:end])
+        if not decision.enough_data or decision.target_weight != weight:
             break
         days += 1
     return days

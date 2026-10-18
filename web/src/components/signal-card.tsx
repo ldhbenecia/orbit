@@ -3,7 +3,7 @@ import { type Currency, formatDate, formatPrice } from "@/lib/format";
 import type { MarketInfo } from "@/lib/markets";
 import { RuleStory } from "@/components/rule-story";
 import type { StoryKey } from "@/lib/rule-stories";
-import { ruleDescription, ruleParam, ruleShortName, ruleStory } from "@/lib/rules";
+import { referenceLabel, ruleDescription, ruleParam, ruleShortName, ruleStory } from "@/lib/rules";
 import { buySideCount, judged, STANCE } from "@/lib/summary";
 
 type Signals = components["schemas"]["SignalsOut"];
@@ -68,7 +68,12 @@ function SignalRow({ signal, info, story }: { signal: Signal; info: MarketInfo; 
       <p className="text-xs text-muted tabular-nums">{meta}</p>
       <p className="text-xs text-muted">{ruleDescription(signal.strategy)}</p>
       {signal.reference ? (
-        <ReferenceLine close={price(signal.close)} reference={price(signal.reference)} gap={Number(signal.close) / Number(signal.reference) - 1} />
+        <ReferenceLine
+          close={price(signal.close)}
+          reference={price(signal.reference)}
+          label={referenceLabel(signal.strategy, info.group)}
+          gap={Number(signal.close) / Number(signal.reference) - 1}
+        />
       ) : signal.trigger ? (
         <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm tabular-nums">
           <span>
@@ -83,7 +88,17 @@ function SignalRow({ signal, info, story }: { signal: Signal; info: MarketInfo; 
 }
 
 // 근거 문장 대신 숫자를 라벨과 함께, 평균과의 차이는 기호가 아니라 말과 색으로
-function ReferenceLine({ close, reference, gap }: { close: string; reference: string; gap: number }) {
+function ReferenceLine({
+  close,
+  reference,
+  label,
+  gap,
+}: {
+  close: string;
+  reference: string;
+  label: string;
+  gap: number;
+}) {
   const above = gap >= 0;
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm tabular-nums">
@@ -92,13 +107,13 @@ function ReferenceLine({ close, reference, gap }: { close: string; reference: st
         {close}
       </span>
       <span>
-        <span className="text-xs text-muted">평균 </span>
+        <span className="text-xs text-muted">{label} </span>
         {reference}
       </span>
       <span
         className={`rounded-md bg-background px-2 py-0.5 text-xs font-medium ${above ? "text-up" : "text-down"}`}
       >
-        평균보다 {Math.abs(gap * 100).toFixed(1)}% {above ? "높음" : "낮음"}
+        {label}보다 {Math.abs(gap * 100).toFixed(1)}% {above ? "높음" : "낮음"}
       </span>
     </div>
   );

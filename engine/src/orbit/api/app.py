@@ -311,9 +311,11 @@ log = logging.getLogger(__name__)
 DCA_EXAMPLE_MONTHLY = Decimal(1_000_000)
 POSITION_WINDOWS = (60, 120)
 PAYDAY_EXAMPLE_MONTHLY = Decimal(1_000)  # 달러 — 예시 금액
-# 관심 종목 추세 — 주식 신호 규칙(이동평균) 그대로, 신호를 바꾸면 같이 바뀌게
+# 관심 종목 추세 점 — 주식 신호 규칙 중 이동평균만 그대로, 신호를 바꾸면 같이 바뀌게
 TREND_RULES = [
-    (int(spec.split("-")[1]), build_strategy(spec)[0]) for spec in STOCK_SIGNAL_STRATEGIES
+    (int(spec.split("-")[1]), build_strategy(spec)[0])
+    for spec in STOCK_SIGNAL_STRATEGIES
+    if spec.startswith("ma-")
 ]
 
 

@@ -83,7 +83,7 @@ def test_변동성_돌파로_산_물량은_다음_날_시가에_정리() -> None
     ]
 
 
-@pytest.mark.parametrize("spec", ["ma-5", "vb-0.5"])
+@pytest.mark.parametrize("spec", ["ma-5", "vb-0.5", "mom-3"])
 def test_미래_봉을_바꿔도_과거_거래는_그대로(spec: str) -> None:
     base = [bar(i, 100, 110 + i % 7 * 3, 95, 100 + i % 5 * 4) for i in range(40)]
     changed = base[:30] + [bar(i, 999, 1000, 1, 1) for i in range(30, 40)]
@@ -98,7 +98,21 @@ def test_미래_봉을_바꿔도_과거_거래는_그대로(spec: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "spec", ["ma", "ma-0", "ma-x", "vb", "vb-0", "vb-2", "vb-abc", "hold-1", "rsi-14"]
+    "spec",
+    [
+        "ma",
+        "ma-0",
+        "ma-x",
+        "vb",
+        "vb-0",
+        "vb-2",
+        "vb-abc",
+        "hold-1",
+        "rsi-14",
+        "mom",
+        "mom-0",
+        "mom-x",
+    ],
 )
 def test_잘못된_전략_이름은_거부(spec: str) -> None:
     with pytest.raises(ValueError):
@@ -108,4 +122,28 @@ def test_잘못된_전략_이름은_거부(spec: str) -> None:
 def test_전략_이름에서_파라미터를_읽음() -> None:
     assert build_strategy("ma-120")[1] == {"window": "120"}
     assert build_strategy("vb-0.5")[1] == {"k": "0.5"}
+    assert build_strategy("mom-252")[1] == {"lookback": "252"}
     assert build_strategy("hold")[1] == {}
+
+
+@pytest.mark.parametrize(
+    ("closes", "weight"),
+    [
+        ([100, 90, 80, 101], 1),  # 3봉 전 100 → 101: 올랐으니 보유
+        ([100, 120, 130, 100], 0),  # 같으면 오르지 않은 것 — 현금
+        ([100, 120, 130, 99], 0),  # 내렸으니 현금 (중간에 올랐던 건 상관없음)
+    ],
+)
+def test_모멘텀은_N봉_전_종가보다_오르면_보유(closes: list[int], weight: int) -> None:
+    decision = build_strategy("mom-3")[0](candles([(c, c) for c in closes]))
+
+    assert decision.target_weight == weight
+    assert decision.reference == closes[0]  # 비교한 N봉 전 종가
+    assert decision.reason
+
+
+def test_모멘텀은_N봉_전_종가가_없으면_판단하지_않음() -> None:
+    decision = build_strategy("mom-3")[0](candles([(100, 100)] * 3))
+
+    assert decision.target_weight == 0
+    assert not decision.enough_data
