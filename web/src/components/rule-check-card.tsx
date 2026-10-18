@@ -8,7 +8,15 @@ type Checks = components["schemas"]["RuleChecksOut"];
 type Row = components["schemas"]["RuleCheckOut"];
 type Period = Row["period"];
 
-const SIGNAL_RULES = ["hold", "ma-60", "ma-120", "ma-200", "vb-0.5"];
+// 오늘의 신호와 같은 규칙 — 모멘텀은 약 12개월 (코인 365일, 주식 252거래일)
+const signalRules = (group: MarketInfo["group"]) => [
+  "hold",
+  "ma-60",
+  "ma-120",
+  "ma-200",
+  group === "stock" ? "mom-252" : "mom-365",
+  "vb-0.5",
+];
 
 // 결과가 특정 기간·특정 값 덕분인지 보는 곳 — 기간을 반으로 나눈 성과와 주변 파라미터
 export function RuleCheckCard({ info, data }: { info: MarketInfo; data: Checks }) {
@@ -25,6 +33,7 @@ export function RuleCheckCard({ info, data }: { info: MarketInfo; data: Checks }
       .map((r) => r.strategy)
       .sort((a, b) => Number(a.split("-")[1]) - Number(b.split("-")[1]));
   const ma = family("ma-");
+  const mom = family("mom-");
   const vb = family("vb-");
 
   return (
@@ -32,6 +41,7 @@ export function RuleCheckCard({ info, data }: { info: MarketInfo; data: Checks }
       <div className="space-y-1">
         <p className="text-sm text-muted">규칙 검증 · {info.name}</p>
         <p className="text-lg font-bold">{verdict(ma, "이동평균 규칙", get, holdFirst, holdSecond)}</p>
+        {mom.length > 0 && <p className="font-semibold">{verdict(mom, "모멘텀 규칙", get, holdFirst, holdSecond)}</p>}
         {vb.length > 0 && <p className="font-semibold">{verdict(vb, "변동성 돌파 규칙", get, holdFirst, holdSecond)}</p>}
         <p className="text-sm text-muted">{drawdowns(ma, get, Number(hold.all.mdd))}</p>
         <p className="text-xs text-muted">
@@ -52,7 +62,7 @@ export function RuleCheckCard({ info, data }: { info: MarketInfo; data: Checks }
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {SIGNAL_RULES.map((spec) => {
+          {signalRules(info.group).map((spec) => {
             const [first, second, all] = [get(spec, "first"), get(spec, "second"), get(spec, "all")];
             if (!first || !second || !all) return null;
             return (
@@ -92,6 +102,16 @@ export function RuleCheckCard({ info, data }: { info: MarketInfo; data: Checks }
         holdFirst={holdFirst}
         holdSecond={holdSecond}
       />
+      {mom.length > 0 && (
+        <Sensitivity
+          title="모멘텀 비교 기간을 바꿔 보면 (개월)"
+          specs={mom}
+          label={(spec) => String(Math.round(Number(spec.split("-")[1]) / (info.group === "stock" ? 21 : 30.4)))}
+          get={get}
+          holdFirst={holdFirst}
+          holdSecond={holdSecond}
+        />
+      )}
       {vb.length > 0 && (
         <Sensitivity
           title="변동성 돌파 k 를 바꿔 보면"
@@ -103,10 +123,10 @@ export function RuleCheckCard({ info, data }: { info: MarketInfo; data: Checks }
         />
       )}
 
-      <OutOfSample specs={[...ma, ...vb]} get={get} holdSecond={holdSecond} group={info.group} />
+      <OutOfSample specs={[...ma, ...mom, ...vb]} get={get} holdSecond={holdSecond} group={info.group} />
 
       <p className="text-xs leading-relaxed text-muted">
-        과거 데이터에서 이랬다는 것이지 앞으로도 같다는 뜻이 아니에요. 수수료·슬리피지·호가 단위를 넣고, 모든 규칙을 240번째 봉부터
+        과거 데이터에서 이랬다는 것이지 앞으로도 같다는 뜻이 아니에요. 수수료·슬리피지·호가 단위를 넣고, 모든 규칙이 판단할 수 있는 날부터
         같은 출발선에서 비교했어요. {formatDate(data.created_at.slice(0, 10))} 검증 · 코드 {data.code_version}
       </p>
     </section>

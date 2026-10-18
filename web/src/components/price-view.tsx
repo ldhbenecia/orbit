@@ -30,8 +30,8 @@ const INTERVALS: { value: Interval; label: string; initialBars: number | null }[
   { value: "month", label: "월", initialBars: null },
 ];
 
-// 단순 보유 → 이동평균(짧은 순) → 변동성 돌파
-const RULE_ORDER = ["hold", "ma", "vb"];
+// 단순 보유 → 이동평균(짧은 순) → 모멘텀 → 변동성 돌파
+const RULE_ORDER = ["hold", "ma", "mom", "vb"];
 const byRuleOrder = (a: Run, b: Run) => {
   const [an, ap] = a.strategy.split("-");
   const [bn, bp] = b.strategy.split("-");
