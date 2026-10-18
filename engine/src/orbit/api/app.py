@@ -17,6 +17,7 @@ from orbit.dca.payday import WINDOW_MONTHS, RuleName, Spend, compare
 from orbit.dca.plan import next_payday, run_dca
 from orbit.estimate.live import NextOpenView
 from orbit.fundamentals.metrics import Fundamentals, Position, fundamentals
+from orbit.fundamentals.snapshot import Snapshot
 from orbit.fundamentals.store import load_snapshots
 from orbit.indicators.moving_average import sma
 from orbit.ledger.book import Ledger
@@ -27,6 +28,7 @@ from orbit.marketdata.names import load_names
 from orbit.marketdata.store import CandleStore
 from orbit.marketdata.toss_rules import us_fee
 from orbit.marketdata.upbit_ticker import Ticker
+from orbit.signals.gap_events import GapEvent, gap_ups
 from orbit.signals.today import STOCK_SIGNAL_STRATEGIES, Stance, is_upbit_market, today_signals
 from orbit.signals.trend_template import (
     RS_MIN_PEERS,
@@ -114,6 +116,25 @@ class TrendTemplateOut(BaseModel):
     peers_min: int  # 이보다 적으면 상대강도는 모름
 
 
+class GapEventOut(BaseModel):
+    day: date  # 갭 상승한 날 (거래소 날짜)
+    gap: Decimal  # 시가 ÷ 전날 종가 − 1
+    volume_multiple: Decimal  # 거래량 ÷ 직전 50일 평균
+    day_return: Decimal
+    prior: Decimal | None  # 직전 약 6개월 수익
+    after: Decimal | None  # 그 뒤 약 1개월 수익 — 아직 안 지났으면 없음
+    filed_near: (
+        date | None
+    )  # 갭 직후(3일 전~35일 뒤) 첫 분기·연간 보고서 공시일 (SEC) — 실적 무렵인지
+
+
+class GapEventsOut(BaseModel):
+    # 크게 갭 상승하고 거래량이 터진 날의 기록 — 사라는 신호가 아니라 지나간 사실
+    as_of: datetime
+    events: list[GapEventOut]  # 최근 순, 최대 GAP_EVENTS_SHOWN 개
+    total: int  # 전체 기간 개수
+
+
 class WatchRowOut(BaseModel):
     market: str
     sector: str
@@ -126,6 +147,7 @@ class WatchRowOut(BaseModel):
     trend: list[TrendOut] = []
     fundamentals: FundamentalsOut | None = None  # 미국 기업만 — ETF·해외 공시 기업은 없음
     template: TrendTemplateOut | None = None  # 1년치 일봉이 없으면 없음
+    recent_gap: GapEventOut | None = None  # 최근 약 1개월(20거래일) 안의 갭 상승 — 미국 종목만
 
 
 class CandleOut(BaseModel):
@@ -311,6 +333,10 @@ log = logging.getLogger(__name__)
 DCA_EXAMPLE_MONTHLY = Decimal(1_000_000)
 POSITION_WINDOWS = (60, 120)
 PAYDAY_EXAMPLE_MONTHLY = Decimal(1_000)  # 달러 — 예시 금액
+GAP_EVENTS_SHOWN = 8
+# 실적 보도자료 뒤 분기 보고서가 나오기까지 대개 몇 주 — 보고서가 갭보다 조금 먼저일 수도 있음
+FILING_BEFORE = timedelta(days=3)
+FILING_AFTER = timedelta(days=35)
 # 관심 종목 추세 점 — 주식 신호 규칙 중 이동평균만 그대로, 신호를 바꾸면 같이 바뀌게
 TREND_RULES = [
     (int(spec.split("-")[1]), build_strategy(spec)[0])
@@ -359,12 +385,14 @@ def create_app(
         finally:
             conn.close()
 
-    def load_fundamentals(market: str, candles: list[Candle]) -> FundamentalsOut | None:
+    def snapshots_for(market: str) -> list[Snapshot]:
         conn = connect()
         try:
-            snaps = load_snapshots(conn, market)
+            return load_snapshots(conn, market)
         finally:
             conn.close()
+
+    def fundamentals_from(snaps: list[Snapshot], candles: list[Candle]) -> FundamentalsOut | None:
         found = fundamentals(snaps, candles)
         return _fundamentals_out(found) if found else None
 
@@ -397,6 +425,26 @@ def create_app(
             peers=peers,
             peers_min=RS_MIN_PEERS,
         )
+
+    def gap_events(snaps: list[Snapshot], candles: list[Candle]) -> list[GapEventOut]:
+        filed = sorted(snap.filed for snap in snaps)
+
+        def out(e: GapEvent) -> GapEventOut:
+            # 실적 보도자료가 먼저, 보고서는 그 뒤 — 갭 직후 첫 공시 (며칠 앞서 낸 것까지)
+            near = next(
+                (d for d in filed if e.day - FILING_BEFORE <= d <= e.day + FILING_AFTER), None
+            )
+            return GapEventOut(
+                day=e.day,
+                gap=e.gap,
+                volume_multiple=e.volume_multiple,
+                day_return=e.day_return,
+                prior=e.prior,
+                after=e.after,
+                filed_near=near,
+            )
+
+        return [out(e) for e in reversed(gap_ups(candles))]
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -466,11 +514,30 @@ def create_app(
                     decision = strategy(candles)
                     if decision.enough_data:
                         row.trend.append(TrendOut(window=window, above=decision.target_weight > 0))
-            row.fundamentals = load_fundamentals(instrument.market, candles)
+            snaps = snapshots_for(instrument.market)
+            row.fundamentals = fundamentals_from(snaps, candles)
             if instrument.currency == "USD":
                 row.template = template_out(candles, ranks.get(instrument.market), len(returns))
+                events = gap_events(snaps, candles)
+                # 그 뒤 1개월(20거래일)이 아직 안 지난 것 = 최근
+                if events and events[0].after is None:
+                    row.recent_gap = events[0]
             rows.append(row)
         return rows
+
+    @app.get("/gap-events")
+    def gap_events_view(market: str) -> GapEventsOut | None:
+        # 미국 종목만 — 분기 보고서 공시일(SEC)과 함께 보여줌
+        instrument = universe.find(market)
+        if instrument is None or instrument.currency != "USD":
+            return None
+        loaded = load_candles(market)
+        if not loaded:
+            return None
+        events = gap_events(snapshots_for(market), loaded)
+        return GapEventsOut(
+            as_of=loaded[-1].start, events=events[:GAP_EVENTS_SHOWN], total=len(events)
+        )
 
     @app.get("/trend-template")
     def trend_template_view(market: str) -> TrendTemplateOut | None:
@@ -484,7 +551,7 @@ def create_app(
 
     @app.get("/fundamentals")
     def fundamentals_view(market: str) -> FundamentalsOut | None:
-        return load_fundamentals(market, load_candles(market))
+        return fundamentals_from(snapshots_for(market), load_candles(market))
 
     @app.get("/candles")
     def candles(

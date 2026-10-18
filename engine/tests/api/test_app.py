@@ -479,6 +479,57 @@ def test_추세_템플릿은_관심_종목과_종목_화면이_같고_상대강�
         assert client.get("/trend-template", params={"market": other}).json() is None
 
 
+def test_갭_상승_기록은_최근_순이고_관심_종목엔_한_달_안_것만(tmp_path: Path) -> None:
+    db = tmp_path / "orbit.sqlite"
+    start = datetime(2025, 1, 1, tzinfo=UTC)
+
+    def day(i: int, price: int, volume: int) -> Candle:
+        # 전날 종가 100 → 시가 price 로 갭, 거래량 volume (평소 10)
+        p = Decimal(price)
+        return Candle("US-AAA", start + timedelta(days=i), p, p, p, p, Decimal(volume))
+
+    bars = [day(i, 100, 10) for i in range(120)]
+    bars[60] = day(60, 115, 40)  # 오래된 갭 — 그 뒤 1개월이 지남
+    bars[61:115] = [day(i, 115, 10) for i in range(61, 115)]
+    bars[115] = day(115, 130, 50)  # 최근 갭
+    bars[116:] = [day(i, 130, 10) for i in range(116, 120)]
+    store = CandleStore.open(db)
+    store.upsert(bars + _stock("US-BBB", [100] * 120), fetched_at=D)
+    store.close()
+    conn = sqlite3.connect(db)
+    filed = (start + timedelta(days=115 + 30)).date()  # 최근 갭 30일 뒤 분기 보고서
+    # 오래된 갭 40일 전 보고서 — 지난 분기 것이라 그 갭의 실적이 아님
+    before = (start + timedelta(days=60 - 40)).date()
+    reports = [
+        Snapshot(before, date(2024, 12, 31), 1, 2, 3, 4, 5, 6, 7),
+        Snapshot(filed, date(2025, 3, 31), 1, 2, 3, 4, 5, 6, 7),
+    ]
+    save_snapshots(conn, "US-AAA", reports, D)
+    conn.close()
+    universe = Universe(
+        (
+            Instrument("US-AAA", "AAA", NEW_YORK, sector="테크"),
+            Instrument("US-BBB", "BBB", NEW_YORK, sector="테크"),
+        ),
+        ("테크",),
+    )
+    client = TestClient(create_app(lambda: sqlite3.connect(db), universe=universe))
+
+    page = client.get("/gap-events", params={"market": "US-AAA"}).json()
+    rows = {r["market"]: r["recent_gap"] for r in client.get("/watchlist").json()}
+
+    assert [e["day"] for e in page["events"]] == [
+        str((start + timedelta(days=115)).date()),
+        str((start + timedelta(days=60)).date()),
+    ]
+    recent, old = page["events"]
+    assert Decimal(recent["gap"]) == Decimal(130) / 115 - 1
+    # 실적 보도자료가 먼저, 보고서는 그 뒤 — 갭 뒤 35일 안의 첫 공시만 (앞으로는 3일까지)
+    assert recent["filed_near"] == str(filed) and old["filed_near"] is None
+    assert recent["after"] is None and Decimal(old["after"]) == 0  # 115 → 20일 뒤 115
+    assert rows == {"US-AAA": recent, "US-BBB": None}
+
+
 def test_규칙_검증은_기록이_없으면_비움(tmp_path: Path) -> None:
     db = tmp_path / "orbit.sqlite"
     client = TestClient(create_app(lambda: sqlite3.connect(db)))
