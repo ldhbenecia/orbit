@@ -2,6 +2,7 @@ import { connection } from "next/server";
 
 import { DcaCard } from "@/components/dca-card";
 import { FundamentalsCard } from "@/components/fundamentals-card";
+import { GapEventsCard } from "@/components/gap-events-card";
 import { NextOpenCard } from "@/components/next-open-card";
 import { PaydayCard } from "@/components/payday-card";
 import { PriceView } from "@/components/price-view";
@@ -23,7 +24,7 @@ export default async function Page(props: PageProps<"/">) {
   const info = findMarket(await getMarkets(), (await props.searchParams).market);
   const market = info.market;
   const usStock = info.group === "stock" && info.currency === "USD";
-  const [candles, summary, runs, verdict, nextOpen, checks, wallet, fundamentals, payday, template] = await Promise.all([
+  const [candles, summary, runs, verdict, nextOpen, checks, wallet, fundamentals, payday, template, gaps] = await Promise.all([
     engineJson<CandleOut[]>(`/candles?market=${market}&interval=day&limit=${RECENT_DAILY}`),
     engineJson<components["schemas"]["CandlesSummaryOut"] | null>(`/candles/summary?market=${market}`),
     engineJson<components["schemas"]["RunOut"][]>(`/backtests?market=${market}`),
@@ -39,6 +40,7 @@ export default async function Page(props: PageProps<"/">) {
     usStock ? engineJson<components["schemas"]["FundamentalsOut"] | null>(`/fundamentals?market=${market}`) : null,
     usStock ? engineJson<components["schemas"]["PaydayOut"] | null>(`/payday?market=${market}`) : null,
     usStock ? engineJson<components["schemas"]["TrendTemplateOut"] | null>(`/trend-template?market=${market}`) : null,
+    usStock ? engineJson<components["schemas"]["GapEventsOut"] | null>(`/gap-events?market=${market}`) : null,
   ]);
   const slots = wallet?.slots.filter((s) => s.market === market) ?? [];
 
@@ -68,6 +70,7 @@ export default async function Page(props: PageProps<"/">) {
         />
         {checks && <RuleCheckCard info={info} data={checks} />}
         {payday && <PaydayCard info={info} data={payday} />}
+        {gaps && <GapEventsCard info={info} data={gaps} />}
       </div>
     </div>
   );

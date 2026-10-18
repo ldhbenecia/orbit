@@ -93,6 +93,11 @@ function WatchRow({ row, info }: { row: Row; info: MarketInfo | undefined }) {
           {info?.name ?? row.market}
           {!DEMO && <span className="ml-1.5 text-xs font-normal text-muted">{row.market.split("-").slice(1).join("-")}</span>}
         </Link>
+        {row.recent_gap && (
+          <span className="block truncate text-[11px] text-muted" title="시가 갭 상승 + 거래량 평소의 3배 이상 — 종목 화면에 기록">
+            {formatDate(row.recent_gap.day)} 갭 상승 {formatPercent1(Number(row.recent_gap.gap))}
+          </span>
+        )}
       </td>
       <td className="px-2 py-2.5 text-right">
         {row.close === null ? (

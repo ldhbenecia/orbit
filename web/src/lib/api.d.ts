@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/gap-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gap Events View */
+        get: operations["gap_events_view_gap_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/trend-template": {
         parameters: {
             query?: never;
@@ -352,6 +369,38 @@ export interface components {
             loss: boolean;
             per_5y: components["schemas"]["PositionOut"] | null;
             pbr_5y: components["schemas"]["PositionOut"] | null;
+        };
+        /** GapEventOut */
+        GapEventOut: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Gap */
+            gap: string;
+            /** Volume Multiple */
+            volume_multiple: string;
+            /** Day Return */
+            day_return: string;
+            /** Prior */
+            prior: string | null;
+            /** After */
+            after: string | null;
+            /** Filed Near */
+            filed_near: string | null;
+        };
+        /** GapEventsOut */
+        GapEventsOut: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Events */
+            events: components["schemas"]["GapEventOut"][];
+            /** Total */
+            total: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -782,6 +831,7 @@ export interface components {
             trend: components["schemas"]["TrendOut"][];
             fundamentals?: components["schemas"]["FundamentalsOut"] | null;
             template?: components["schemas"]["TrendTemplateOut"] | null;
+            recent_gap?: components["schemas"]["GapEventOut"] | null;
         };
     };
     responses: never;
@@ -828,6 +878,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WatchRowOut"][];
+                };
+            };
+        };
+    };
+    gap_events_view_gap_events_get: {
+        parameters: {
+            query: {
+                market: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GapEventsOut"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
