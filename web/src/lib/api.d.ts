@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/trend-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Trend Template View */
+        get: operations["trend_template_view_trend_template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/fundamentals": {
         parameters: {
             query?: never;
@@ -262,6 +279,11 @@ export interface components {
             /** Count */
             count: number;
         };
+        /**
+         * Check
+         * @enum {string}
+         */
+        Check: "above_150_200" | "ma150_over_200" | "ma200_rising" | "ma50_over_long" | "above_50" | "above_low" | "near_high" | "strong";
         /** DcaOut */
         DcaOut: {
             /**
@@ -613,6 +635,12 @@ export interface components {
          * @enum {string}
          */
         Stance: "hold" | "cash" | "breakout_wait" | "breakout_hit" | "not_enough";
+        /** TemplateCheckOut */
+        TemplateCheckOut: {
+            check: components["schemas"]["Check"];
+            /** Passed */
+            passed: boolean | null;
+        };
         /** TradeOut */
         TradeOut: {
             /**
@@ -638,6 +666,24 @@ export interface components {
             window: number;
             /** Above */
             above: boolean;
+        };
+        /** TrendTemplateOut */
+        TrendTemplateOut: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Passed */
+            passed: number;
+            /** Known */
+            known: number;
+            /** Checks */
+            checks: components["schemas"]["TemplateCheckOut"][];
+            /** Peers */
+            peers: number;
+            /** Peers Min */
+            peers_min: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -735,6 +781,7 @@ export interface components {
              */
             trend: components["schemas"]["TrendOut"][];
             fundamentals?: components["schemas"]["FundamentalsOut"] | null;
+            template?: components["schemas"]["TrendTemplateOut"] | null;
         };
     };
     responses: never;
@@ -781,6 +828,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WatchRowOut"][];
+                };
+            };
+        };
+    };
+    trend_template_view_trend_template_get: {
+        parameters: {
+            query: {
+                market: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrendTemplateOut"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
