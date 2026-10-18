@@ -282,17 +282,17 @@ const pickLabel = (spec: string, group: MarketInfo["group"]) => {
   return `k ${arg}`;
 };
 
-// 같은 값이 이어지면 묶어서 "40일 (2021~2023)"
+// 같은 값이 이어지면 묶어서 "40일 (2021.09~2023.09)" — 1년 단위가 1월에 시작하지 않아 연·월로
 const pickRuns = (picks: Checks["walk"][number]["picks"], group: MarketInfo["group"]) => {
+  const month = (iso: string) => iso.slice(0, 7).replace("-", ".");
   const runs: { label: string; from: string; to: string }[] = [];
   for (const p of picks) {
     const label = pickLabel(p.spec, group);
-    const year = p.start.slice(0, 4);
     const last = runs.at(-1);
-    if (last && last.label === label) last.to = year;
-    else runs.push({ label, from: year, to: year });
+    if (last && last.label === label) last.to = month(p.end);
+    else runs.push({ label, from: month(p.start), to: month(p.end) });
   }
-  return runs.map((r) => `${r.label} (${r.from === r.to ? r.from : `${r.from}~${r.to}`})`).join(" → ");
+  return runs.map((r) => `${r.label} (${r.from}~${r.to})`).join(" → ");
 };
 
 // 반으로 한 번 나누는 검증보다 엄격 — 해마다 그때까지의 기록으로만 고르고 다음 1년 써 봄

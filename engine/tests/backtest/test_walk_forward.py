@@ -87,3 +87,14 @@ def test_3년_뒤_시험할_날이_없으면_없음() -> None:
     results = {"A": result(lambda i: "1.001", T1)}
 
     assert walk_forward(results, ["A"], START, START + timedelta(days=T1 - 1)) is None
+
+
+def test_반년이_안_되는_마지막_기간은_한_해로_치지_않음() -> None:
+    # 시험 한 번 + 3주 — 3주짜리는 빼고 한 번만
+    days = T1 + TEST.days + 21
+    results = {"A": result(lambda i: "1.001", days)}
+
+    walk = walk_forward(results, ["A"], START, START + timedelta(days=days - 1))
+
+    assert walk is not None and len(walk.picks) == 1
+    assert walk.navs[-1][0] == START + timedelta(days=T1 + TEST.days - 1)
