@@ -294,10 +294,25 @@ class RuleCheckOut(BaseModel):
     )  # 전체 기간 — 시험 횟수를 감안해도 샤프가 보유보다 높은 게 우연이 아닐 확률
 
 
+class WalkPickOut(BaseModel):
+    start: datetime  # 써 본 첫날
+    end: datetime
+    spec: str  # 직전 3년 수익이 가장 컸던 값
+
+
+class WalkOut(BaseModel):
+    # 워크포워드 — 해마다 직전 3년으로 고른 값을 다음 1년 써 봄. 요약은 rows 의 wf-계열·wf-hold
+    family: str  # ma · mom · vb
+    picks: list[WalkPickOut]
+
+
 class RuleChecksOut(BaseModel):
     created_at: datetime
     code_version: str
-    rows: list[RuleCheckOut]
+    rows: list[
+        RuleCheckOut
+    ]  # 규칙·기간별 + 워크포워드 요약 (strategy 가 wf-ma · wf-mom · wf-vb · wf-hold)
+    walk: list[WalkOut] = []
 
 
 class WalletFillOut(BaseModel):
@@ -747,6 +762,13 @@ def create_app(
                     edge_prob=r.edge_prob,
                 )
                 for r in saved.rows
+            ],
+            walk=[
+                WalkOut(
+                    family=family,
+                    picks=[WalkPickOut(start=p.start, end=p.end, spec=p.spec) for p in picks],
+                )
+                for family, picks in saved.picks.items()
             ],
         )
 

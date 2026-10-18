@@ -1,6 +1,6 @@
 import math
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -10,6 +10,7 @@ from orbit.backtest.configs import config_for
 from orbit.backtest.engine import BacktestResult, Funding, run_backtest
 from orbit.backtest.metrics import DAYS_PER_YEAR
 from orbit.backtest.stats import deflated_sharpe, moments, sharpe
+from orbit.backtest.walk_forward import Pick, Walk, walk_forward
 from orbit.db.migrations import migrate
 from orbit.marketdata.candle import Candle
 from orbit.strategies.registry import build_strategy
@@ -72,12 +73,28 @@ def periods(candles: Sequence[Candle], warmup: int) -> tuple[Span, Span, Span]:
     return (days[0], days[-1]), (days[0], first_end), (middle, days[-1])
 
 
+@dataclass(frozen=True, slots=True)
+class Validation:
+    rows: list[RuleCheck]  # 규칙·기간별 + 워크포워드 요약 (wf-계열, wf-hold)
+    picks: dict[str, list[Pick]]  # 계열(ma·mom·vb)마다 해마다 고른 값
+
+
+def families(specs: Sequence[str]) -> dict[str, list[str]]:
+    # 값이 여럿인 규칙 계열만 — 워크포워드는 "여러 값 중 고르기" 를 검증
+    out: dict[str, list[str]] = {}
+    for spec in specs:
+        name, _, arg = spec.partition("-")
+        if arg:
+            out.setdefault(name, []).append(spec)
+    return {name: group for name, group in out.items() if len(group) > 1}
+
+
 def check_rules(
     market: str,
     candles: Sequence[Candle],
     specs: Sequence[str],
     warmup: int | None = None,
-) -> list[RuleCheck]:
+) -> Validation:
     # 전 기간을 한 번 돌리고 기준가 기록을 기간별로 자름
     # 뒤 기간만 잘라 돌리면 이동평균이 처음 N일 동안 판단을 못 해 불리해짐
     whole, first, second = periods(candles, warmup_for(specs) if warmup is None else warmup)
@@ -93,7 +110,43 @@ def check_rules(
         for spec, result in results.items()
         for period, span in spans
     ]
-    return _with_edge(rows, results, whole) if "hold" in results else rows
+    rows = _with_edge(rows, results, whole) if "hold" in results else rows
+    picks: dict[str, list[Pick]] = {}
+    if "hold" in results:
+        hold = walk_forward(results, ["hold"], *whole)
+        for name, group in families(specs).items():
+            walk = walk_forward(results, group, *whole)
+            if walk is None or hold is None:
+                continue
+            picks[name] = walk.picks
+            rows.append(_walk_check(f"wf-{name}", walk, per_year))
+        if picks and hold is not None:
+            rows.append(_walk_check("wf-hold", hold, per_year))
+    return Validation(rows, picks)
+
+
+def _walk_check(name: str, walk: Walk, per_year: int) -> RuleCheck:
+    # 해마다 고른 값을 이어 쓴 결과 — 값을 갈아탈 때 드는 매매 비용은 넣지 않음
+    base_day, base = walk.navs[0]
+    peak = base
+    mdd = Decimal(0)
+    for _, nav in walk.navs:
+        peak = max(peak, nav)
+        mdd = min(mdd, nav / peak - 1)
+    end_day, end = walk.navs[-1]
+    years = Decimal((end_day - base_day).days) / DAYS_PER_YEAR
+    returns = [float(b / a - 1) for (_, a), (_, b) in zip(walk.navs, walk.navs[1:], strict=False)]
+    return RuleCheck(
+        strategy=name,
+        period="all",
+        start=walk.picks[0].start,
+        end=walk.picks[-1].end,
+        cagr=(end / base) ** (1 / years) - 1 if years > 0 else Decimal(0),
+        mdd=mdd,
+        trades=walk.trades,
+        fee_ratio=Decimal(0),
+        sharpe=Decimal(str(round(sharpe(returns) * math.sqrt(per_year), 6))),
+    )
 
 
 def _daily_returns(result: BacktestResult, span: Span) -> list[float]:
@@ -177,9 +230,27 @@ def save_checks(
     rows: Sequence[RuleCheck],
     created_at: datetime,
     code_version: str,
+    picks: Mapping[str, Sequence[Pick]] | None = None,
 ) -> None:
     migrate(conn)
+    created_ts = int(created_at.timestamp())
     with conn:
+        conn.executemany(
+            "INSERT INTO walk_forward_picks (market, created_ts, family, start_ts, end_ts, spec)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    market,
+                    created_ts,
+                    family,
+                    int(p.start.timestamp()),
+                    int(p.end.timestamp()),
+                    p.spec,
+                )
+                for family, group in (picks or {}).items()
+                for p in group
+            ],
+        )
         conn.executemany(
             """
             INSERT INTO rule_checks (
@@ -213,6 +284,7 @@ class SavedChecks:
     created_at: datetime
     code_version: str
     rows: list[RuleCheck]
+    picks: dict[str, list[Pick]]
 
 
 def latest_checks(conn: sqlite3.Connection, market: str) -> SavedChecks | None:
@@ -231,9 +303,19 @@ def latest_checks(conn: sqlite3.Connection, market: str) -> SavedChecks | None:
         """,
         (market, found),
     ).fetchall()
+    picks: dict[str, list[Pick]] = {}
+    for family, start_ts, end_ts, spec in conn.execute(
+        "SELECT family, start_ts, end_ts, spec FROM walk_forward_picks"
+        " WHERE market = ? AND created_ts = ? ORDER BY family, start_ts",
+        (market, found),
+    ):
+        picks.setdefault(family, []).append(
+            Pick(datetime.fromtimestamp(start_ts, UTC), datetime.fromtimestamp(end_ts, UTC), spec)
+        )
     return SavedChecks(
         created_at=datetime.fromtimestamp(found, UTC),
         code_version=rows[0][2],
+        picks=picks,
         rows=[
             RuleCheck(
                 strategy=row[0],
