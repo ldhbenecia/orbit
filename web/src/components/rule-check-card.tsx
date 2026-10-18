@@ -1,7 +1,7 @@
 import type { components } from "@/lib/api";
 import { formatDate, formatPercent1 } from "@/lib/format";
 import type { MarketInfo } from "@/lib/markets";
-import { ruleShortName } from "@/lib/rules";
+import { months, ruleShortName } from "@/lib/rules";
 import { tone } from "@/lib/summary";
 
 type Checks = components["schemas"]["RuleChecksOut"];
@@ -106,7 +106,7 @@ export function RuleCheckCard({ info, data }: { info: MarketInfo; data: Checks }
         <Sensitivity
           title="모멘텀 비교 기간을 바꿔 보면 (개월)"
           specs={mom}
-          label={(spec) => String(Math.round(Number(spec.split("-")[1]) / (info.group === "stock" ? 21 : 30.4)))}
+          label={(spec) => String(months(Number(spec.split("-")[1]), info.group))}
           get={get}
           holdFirst={holdFirst}
           holdSecond={holdSecond}

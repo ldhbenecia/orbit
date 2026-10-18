@@ -2,7 +2,7 @@ import type { MarketGroup } from "@/lib/markets";
 import type { StoryKey } from "@/lib/rule-stories";
 
 // 주식은 주말·휴장일이 빠져 N 개 봉이 N 거래일 (한 달 약 21거래일), 코인은 그냥 N 일
-const months = (n: number, group: MarketGroup) => Math.round(n / (group === "stock" ? 21 : 30));
+export const months = (n: number, group: MarketGroup) => Math.round(n / (group === "stock" ? 21 : 30));
 
 export const ruleName = (spec: string, group: MarketGroup) => {
   const [name, arg] = spec.split("-");

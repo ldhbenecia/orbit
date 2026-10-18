@@ -120,7 +120,7 @@ def main() -> None:
         "compare-strategies", help="여러 전략을 같은 조건으로 백테스트하고 결과를 기록"
     )
     strategies.add_argument("--market", default="KRW-BTC")
-    strategies.add_argument("--strategies", default="hold,ma-60,ma-120,ma-200,vb-0.5")
+    strategies.add_argument("--strategies", default="hold,ma-60,ma-120,ma-200,mom-365,vb-0.5")
     strategies.add_argument("--start", type=_utc_date, default=_utc_date("2018-01-01"))
     strategies.add_argument("--end", type=_utc_date, default=datetime.max.replace(tzinfo=UTC))
     strategies.add_argument("--initial", type=Decimal, default=Decimal(10_000_000))
