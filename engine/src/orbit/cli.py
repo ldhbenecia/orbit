@@ -380,8 +380,9 @@ def _validate(markets: list[str], db: Path) -> None:
     try:
         for market in markets:
             candles = CandleStore(conn).load(market)
-            rows = check_rules(market, candles, specs_for(market))
-            save_checks(conn, market, rows, now, version)
+            result = check_rules(market, candles, specs_for(market))
+            save_checks(conn, market, result.rows, now, version, result.picks)
+            rows = result.rows
             table = {(r.strategy, r.period): r for r in rows}
             whole = table[("hold", "all")]
             log.info(
@@ -415,6 +416,27 @@ def _validate(markets: list[str], db: Path) -> None:
                     f"{a.sharpe:.2f}",
                     "—" if a.edge_prob is None else f"{a.edge_prob:.0%}",
                 )
+            if result.picks:
+                # 해마다 직전 3년으로 고른 값을 다음 1년 써 본 결과 — 같은 기간 단순 보유와
+                hold = table[("wf-hold", "all")]
+                log.info(
+                    "워크포워드 %s ~ %s — 단순 보유 %s (MDD %s)",
+                    f"{hold.start:%Y-%m-%d}",
+                    f"{hold.end:%Y-%m-%d}",
+                    f"{hold.cagr:+.1%}",
+                    f"{hold.mdd:.1%}",
+                )
+                for family, picks in result.picks.items():
+                    w = table[(f"wf-{family}", "all")]
+                    chosen = " → ".join(p.spec for p in picks)
+                    log.info(
+                        "  %-4s %s (MDD %s, 샤프 %s)  %s",
+                        family,
+                        f"{w.cagr:+.1%}",
+                        f"{w.mdd:.1%}",
+                        f"{w.sharpe:.2f}",
+                        chosen,
+                    )
     finally:
         conn.close()
     log.info("\n우연 아님: 시험한 규칙 수를 감안해도 샤프가 단순 보유보다 높은 게 우연이 아닐 확률")

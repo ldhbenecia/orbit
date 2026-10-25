@@ -125,6 +125,8 @@ export function RuleCheckCard({ info, data }: { info: MarketInfo; data: Checks }
 
       <OutOfSample specs={[...ma, ...mom, ...vb]} get={get} holdSecond={holdSecond} group={info.group} />
 
+      <WalkForward data={data} group={info.group} />
+
       <p className="text-xs leading-relaxed text-muted">
         과거 데이터에서 이랬다는 것이지 앞으로도 같다는 뜻이 아니에요. 수수료·슬리피지·호가 단위를 넣고, 모든 규칙이 판단할 수 있는 날부터
         같은 출발선에서 비교했어요. {formatDate(data.created_at.slice(0, 10))} 검증 · 코드 {data.code_version}
@@ -265,6 +267,79 @@ function OutOfSample({ specs, get, holdSecond, group }: { specs: string[]; get: 
       </p>
       <p className="mt-1 text-xs text-muted">
         과거에 제일 좋았던 값을 고르는 건 쉬워요. 고른 뒤의 기간에서도 통하는지가 진짜 검증이에요.
+      </p>
+    </div>
+  );
+}
+
+const FAMILY_NAME: Record<string, string> = { ma: "이동평균", mom: "모멘텀", vb: "변동성 돌파" };
+
+// 고른 값의 짧은 이름 — 이동평균은 기간, 모멘텀은 개월, 돌파는 k
+const pickLabel = (spec: string, group: MarketInfo["group"]) => {
+  const [name, arg] = spec.split("-");
+  if (name === "ma") return `${arg}${group === "stock" ? "거래일" : "일"}`;
+  if (name === "mom") return `${months(Number(arg), group)}개월`;
+  return `k ${arg}`;
+};
+
+// 같은 값이 이어지면 묶어서 "40일 (2021.09~2023.09)" — 1년 단위가 1월에 시작하지 않아 연·월로
+const pickRuns = (picks: Checks["walk"][number]["picks"], group: MarketInfo["group"]) => {
+  const month = (iso: string) => iso.slice(0, 7).replace("-", ".");
+  const runs: { label: string; from: string; to: string }[] = [];
+  for (const p of picks) {
+    const label = pickLabel(p.spec, group);
+    const last = runs.at(-1);
+    if (last && last.label === label) last.to = month(p.end);
+    else runs.push({ label, from: month(p.start), to: month(p.end) });
+  }
+  return runs.map((r) => `${r.label} (${r.from}~${r.to})`).join(" → ");
+};
+
+// 반으로 한 번 나누는 검증보다 엄격 — 해마다 그때까지의 기록으로만 고르고 다음 1년 써 봄
+function WalkForward({ data, group }: { data: Checks; group: MarketInfo["group"] }) {
+  const row = (name: string) => data.rows.find((r) => r.strategy === name && r.period === "all");
+  const hold = row("wf-hold");
+  if (!hold || data.walk.length === 0) return null;
+  const lines = [
+    { key: "hold", name: "단순 보유 (같은 기간)", r: hold, picks: null },
+    ...data.walk.flatMap((w) => {
+      const r = row(`wf-${w.family}`);
+      return r ? [{ key: w.family, name: `${FAMILY_NAME[w.family] ?? w.family} 규칙`, r, picks: pickRuns(w.picks, group) }] : [];
+    }),
+  ];
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">해마다 다시 골랐다면 (워크포워드)</p>
+      <p className="text-xs text-muted">
+        {formatDate(hold.start.slice(0, 10))} ~ {formatDate(hold.end.slice(0, 10))} · 매년 직전 3년에 가장 좋았던 값을 다음 1년
+        써 보고 이어 붙였어요
+      </p>
+      <table className="w-full text-sm tabular-nums">
+        <thead>
+          <tr className="text-xs text-muted">
+            <th className="py-1 text-left font-normal">규칙</th>
+            <th className="py-1 text-right font-normal">연평균 수익</th>
+            <th className="py-1 text-right font-normal">최대 하락</th>
+            <th className="hidden py-1 text-right font-normal sm:table-cell">샤프</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {lines.map((l) => (
+            <tr key={l.key}>
+              <td className="py-2">
+                {l.name}
+                {l.picks && <span className="block text-[11px] text-muted">고른 값: {l.picks}</span>}
+              </td>
+              <td className={`py-2 text-right ${tone(Number(l.r.cagr))}`}>{formatPercent1(Number(l.r.cagr))}</td>
+              <td className="py-2 text-right text-muted">{formatPercent1(Number(l.r.mdd))}</td>
+              <td className="hidden py-2 text-right text-muted sm:table-cell">{Number(l.r.sharpe).toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-xs text-muted">
+        고를 때 다음 1년 성과는 보지 않아요. 값을 갈아탈 때 드는 매매 비용은 넣지 않았어요. 이 기간에 큰 하락장이 몇 번
+        있었는지에 따라 결과가 크게 달라져요.
       </p>
     </div>
   );

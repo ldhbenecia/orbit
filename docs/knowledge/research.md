@@ -8,7 +8,7 @@
 | 연구 | 핵심 | orbit 에서 | 상태 |
 |---|---|---|---|
 | Faber (2007), "A Quantitative Approach to Tactical Asset Allocation", *Journal of Wealth Management* | 10개월 이동평균 위면 보유·아래면 현금 → 수익은 비슷, 최대 낙폭은 크게 줄었음 | 이동평균 규칙(`ma-N`)의 원형. 월봉 10개월 규칙도 비교 | 일봉 규칙 구현·검증 |
-| Moskowitz·Ooi·Pedersen (2012), "Time Series Momentum", *Journal of Financial Economics* | 자기 과거 수익이 플러스면 계속 오르는 경향 (시계열 모멘텀), 여러 자산·수십 년에서 | 1·3·12개월 수익 부호로 보유 | 예정 |
+| Moskowitz·Ooi·Pedersen (2012), "Time Series Momentum", *Journal of Financial Economics* | 자기 과거 수익이 플러스면 계속 오르는 경향 (시계열 모멘텀), 여러 자산·수십 년에서 | 1·3·12개월 수익 부호로 보유 | ✅ `mom-N` (12개월 신호, 3~12개월 검증) |
 | Hurst·Ooi·Pedersen (2017), "A Century of Evidence on Trend-Following Investing", *Journal of Portfolio Management* | 추세추종이 100년 넘게 유지, 여러 기간 신호를 섞으면 더 안정적 | 신호 카드의 "규칙 N개 중 M개" 를 그 비율만큼 보유하는 규칙으로 | 예정 |
 | Jegadeesh·Titman (1993), "Returns to Buying Winners and Selling Losers", *Journal of Finance* | 종목끼리 비교해 최근 많이 오른 쪽이 계속 나음 (횡단면 모멘텀) | 미국 개별주가 여러 개 생기면 | 나중 |
 | Liu·Tsyvinski (2021), "Risks and Returns of Cryptocurrency", *Review of Financial Studies* · Liu·Tsyvinski·Wu (2022), "Common Risk Factors in Cryptocurrency", *Journal of Finance* | 코인은 주식과 다른 요인으로 움직이고 1~4주 단기 모멘텀이 강함 | 코인 전용 1~4주 모멘텀 규칙 | 예정 |
@@ -26,7 +26,7 @@
 |---|---|---|---|
 | Harvey·Liu·Zhu (2016), "…and the Cross-Section of Expected Returns", *Review of Financial Studies* | 여러 개를 시험하면 우연히 좋은 게 나옴 — 시험 횟수만큼 기준을 높여야 | 규칙 검증에 시험 횟수 표시 | ✅ |
 | Bailey·López de Prado (2014), "The Deflated Sharpe Ratio", *Journal of Portfolio Management* | 시험 횟수·수익 분포(치우침·두꺼운 꼬리)를 감안해 샤프 비율이 우연이 아닐 확률 | 규칙마다 "샤프가 보유보다 높은 게 우연이 아닐 확률" — 기준선을 보유 샤프로 | ✅ |
-| López de Prado (2018), 『Advances in Financial Machine Learning』 | 한 번 나누는 검증은 부족 — 굴려가며 반복(워크포워드), 정보 누설 방지 | 반씩 나누기 → 여러 구간 워크포워드 | 예정 |
+| López de Prado (2018), 『Advances in Financial Machine Learning』 | 한 번 나누는 검증은 부족 — 굴려가며 반복(워크포워드), 정보 누설 방지 | 반씩 나누기 → 여러 구간 워크포워드 | ✅ 해마다 직전 3년으로 고르고 다음 1년 써 봄 |
 
 ## 적립 · 기타
 

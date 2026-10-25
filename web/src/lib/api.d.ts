@@ -613,6 +613,11 @@ export interface components {
             code_version: string;
             /** Rows */
             rows: components["schemas"]["RuleCheckOut"][];
+            /**
+             * Walk
+             * @default []
+             */
+            walk: components["schemas"]["WalkOut"][];
         };
         /** RunOut */
         RunOut: {
@@ -746,6 +751,28 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WalkOut */
+        WalkOut: {
+            /** Family */
+            family: string;
+            /** Picks */
+            picks: components["schemas"]["WalkPickOut"][];
+        };
+        /** WalkPickOut */
+        WalkPickOut: {
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Spec */
+            spec: string;
         };
         /** WalletFillOut */
         WalletFillOut: {

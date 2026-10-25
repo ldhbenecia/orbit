@@ -151,6 +151,18 @@ MIGRATIONS: list[str] = [
         fetched_ts INTEGER NOT NULL         -- epoch 초 (UTC)
     ) STRICT, WITHOUT ROWID;
     """,
+    # 10: 워크포워드 — 규칙 계열마다 해마다 직전 3년으로 고른 값. rule_checks 묶음(created_ts)과 짝
+    """
+    CREATE TABLE walk_forward_picks (
+        market TEXT NOT NULL,
+        created_ts INTEGER NOT NULL,
+        family TEXT NOT NULL,           -- ma · mom · vb
+        start_ts INTEGER NOT NULL,      -- 써 본 첫날, epoch 초 (UTC)
+        end_ts INTEGER NOT NULL,
+        spec TEXT NOT NULL,             -- 고른 값 (ma-120 등)
+        PRIMARY KEY (market, created_ts, family, start_ts)
+    ) STRICT, WITHOUT ROWID;
+    """,
 ]
 
 
